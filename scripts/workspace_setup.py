@@ -44,15 +44,17 @@ BASE_DIRECTORIES = (
 )
 
 ASSET_FILES = (
-    Path("AGENTS.md"),
-    Path("README_취업자료_운영규칙.md"),
     Path("공통자료") / "경력_프로젝트_소재.md",
     Path("작성템플릿") / "자소서_작성설계.md",
 )
 
-RECOGNIZED_ENTRIES = (
+OPTIONAL_RULE_FILES = (
     Path("AGENTS.md"),
     Path("README_취업자료_운영규칙.md"),
+)
+
+RECOGNIZED_ENTRIES = (
+    *OPTIONAL_RULE_FILES,
     Path("공통자료"),
     Path("작성템플릿"),
     Path("증빙서류"),
@@ -178,7 +180,7 @@ def adoptable_workspace_score(root: Path) -> int:
         return 0
     guide_count = sum(
         (root / entry).is_file()
-        for entry in (Path("AGENTS.md"), Path("README_취업자료_운영규칙.md"))
+        for entry in OPTIONAL_RULE_FILES
     )
     return core_count * 10 + guide_count
 
@@ -343,6 +345,11 @@ def setup_plan(
         if target.exists() and not target.is_file():
             raise SetupError(f"파일 경로에 같은 이름의 폴더가 있습니다: {target}")
         (preserve if target.exists() else create).append(relative.as_posix())
+    for relative in OPTIONAL_RULE_FILES:
+        target = root / relative
+        if target.exists():
+            suffix = "/" if target.is_dir() else ""
+            preserve.append(relative.as_posix() + suffix)
     create.append(MARKER.as_posix())
 
     return {

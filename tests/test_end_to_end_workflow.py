@@ -68,6 +68,8 @@ class EndToEndWorkflowTest(unittest.TestCase):
             self.assertEqual(application_marker["posting_key"], "EXAMPLE-001")
             self.assertEqual(first["number"], 1)
             self.assertEqual(second["number"], 2)
+            self.assertFalse((root / "AGENTS.md").exists())
+            self.assertFalse((root / "README_취업자료_운영규칙.md").exists())
             self.assertNotIn(str(root), json.dumps(workspace_marker, ensure_ascii=False))
             self.assertNotIn(str(root), json.dumps(application_marker, ensure_ascii=False))
 

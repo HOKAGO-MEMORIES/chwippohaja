@@ -307,7 +307,7 @@ def next_draft(application: Path, name: str, extension: str) -> dict[str, Any]:
     ]
     number = max(used, default=0) + 1
     if number > 99:
-        raise ApplicationError("두 자리 작성 번호를 모두 사용했습니다. 운영 규칙을 갱신하세요.")
+        raise ApplicationError("두 자리 작성 번호를 모두 사용했습니다. 작성본 번호 정책을 갱신하세요.")
     filename = f"{number:02d}_{base_name}.{normalized_extension}"
     target = draft_folder / filename
     if target.exists():

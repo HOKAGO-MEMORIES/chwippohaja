@@ -53,7 +53,8 @@ class WorkspaceSetupTest(unittest.TestCase):
                 root, "local", "2026 하반기", "disabled", "disabled", False
             )
             self.assertEqual(result["status"], "configured")
-            self.assertTrue((root / "AGENTS.md").is_file())
+            self.assertFalse((root / "AGENTS.md").exists())
+            self.assertFalse((root / "README_취업자료_운영규칙.md").exists())
             self.assertTrue((root / "공통자료" / "경력_프로젝트_소재.md").is_file())
             self.assertTrue((root / "2026 하반기").is_dir())
 
@@ -228,16 +229,25 @@ class WorkspaceSetupTest(unittest.TestCase):
             common.mkdir(parents=True)
             existing = common / "경력_프로젝트_소재.md"
             existing.write_text("기존 내용\n", encoding="utf-8")
+            local_rules = root / "AGENTS.md"
+            local_rules.write_text("사용자 추가 규칙\n", encoding="utf-8")
 
             with self.assertRaises(workspace_setup.SetupError):
                 workspace_setup.setup_plan(
                     root, "local", "2026 하반기", "disabled", "disabled", False
                 )
 
+            plan = workspace_setup.setup_plan(
+                root, "local", "2026 하반기", "pending", "pending", True
+            )
+            self.assertIn("AGENTS.md", plan["preserve"])
+            self.assertNotIn("AGENTS.md", plan["create"])
+
             workspace_setup.apply_setup(
                 root, "local", "2026 하반기", "pending", "pending", True
             )
             self.assertEqual(existing.read_text(encoding="utf-8"), "기존 내용\n")
+            self.assertEqual(local_rules.read_text(encoding="utf-8"), "사용자 추가 규칙\n")
             self.assertTrue((root / ".chwippohaja" / "workspace.json").is_file())
 
     def test_invalid_season_is_rejected(self) -> None:
@@ -337,7 +347,7 @@ class WorkspaceSetupTest(unittest.TestCase):
     def test_file_directory_collision_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / "취업"
-            (root / "AGENTS.md").mkdir(parents=True)
+            (root / "공통자료" / "경력_프로젝트_소재.md").mkdir(parents=True)
             with self.assertRaises(workspace_setup.SetupError):
                 workspace_setup.setup_plan(
                     root, "local", "2026 하반기", "disabled", "disabled", True
@@ -353,15 +363,13 @@ class WorkspaceSetupTest(unittest.TestCase):
             child.mkdir()
             self.assertEqual(workspace_setup.find_workspace(child), root.resolve())
 
-    def test_discovery_infers_workspace_above_season_folder(self) -> None:
+    def test_discovery_infers_workspace_above_season_folder_without_agents(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / "취업"
             for name in ("공통자료", "작성템플릿", "증빙서류"):
                 (root / name).mkdir(parents=True)
-            (root / "AGENTS.md").write_text("규칙\n", encoding="utf-8")
             season = root / "2026 하반기"
             season.mkdir()
-            (season / "AGENTS.md").write_text("시즌 규칙\n", encoding="utf-8")
 
             result = workspace_setup.discovery(season)
 
