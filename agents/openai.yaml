@@ -1,0 +1,4 @@
+interface:
+  display_name: "취뽀하자"
+  short_description: "Drive와 Notion을 잇는 한국 취업 지원 워크플로우"
+  default_prompt: "$chwippohaja로 지원 공고 등록부터 제출 자료 정리까지 이어서 진행해줘."
