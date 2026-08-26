@@ -69,6 +69,13 @@ class SetupError(RuntimeError):
     """Raised when setup cannot proceed safely."""
 
 
+def configure_utf8_stdio() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding="utf-8")
+
+
 def resolved(raw: str | Path) -> Path:
     return Path(raw).expanduser().resolve(strict=False)
 
@@ -541,6 +548,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    configure_utf8_stdio()
     args = parse_args(argv)
     try:
         if args.command == "discover":

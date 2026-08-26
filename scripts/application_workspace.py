@@ -34,6 +34,13 @@ class ApplicationError(RuntimeError):
     """Raised when an application workspace cannot be handled safely."""
 
 
+def configure_utf8_stdio() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding="utf-8")
+
+
 def safe_component(value: str, label: str) -> str:
     if not isinstance(value, str):
         raise ApplicationError(f"{label}은 문자열이어야 합니다.")
@@ -338,6 +345,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    configure_utf8_stdio()
     args = parse_args(argv)
     try:
         if args.command == "next-draft":

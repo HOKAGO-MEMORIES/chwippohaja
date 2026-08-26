@@ -34,7 +34,7 @@ class WorkspaceSetupTest(unittest.TestCase):
                 ],
                 check=False,
                 capture_output=True,
-                text=True,
+                encoding="utf-8",
             )
             self.assertEqual(completed.returncode, 0, completed.stderr)
             self.assertEqual(json.loads(completed.stdout)["status"], "new")
@@ -134,7 +134,7 @@ class WorkspaceSetupTest(unittest.TestCase):
                 ],
                 check=False,
                 capture_output=True,
-                text=True,
+                encoding="utf-8",
             )
             self.assertEqual(completed.returncode, 0, completed.stderr)
             self.assertEqual(json.loads(completed.stdout)["profile_status"], "in_progress")
@@ -183,7 +183,7 @@ class WorkspaceSetupTest(unittest.TestCase):
                 ],
                 check=False,
                 capture_output=True,
-                text=True,
+                encoding="utf-8",
             )
             reported = subprocess.run(
                 [
@@ -195,7 +195,7 @@ class WorkspaceSetupTest(unittest.TestCase):
                 ],
                 check=False,
                 capture_output=True,
-                text=True,
+                encoding="utf-8",
             )
 
             self.assertEqual(updated.returncode, 0, updated.stderr)

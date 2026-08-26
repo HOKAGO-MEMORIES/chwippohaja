@@ -153,7 +153,7 @@ class ApplicationWorkspaceTest(unittest.TestCase):
                 command,
                 check=False,
                 capture_output=True,
-                text=True,
+                encoding="utf-8",
             )
             application = root / "2026 하반기" / "예시전자"
 
@@ -166,13 +166,13 @@ class ApplicationWorkspaceTest(unittest.TestCase):
                 command,
                 check=False,
                 capture_output=True,
-                text=True,
+                encoding="utf-8",
             )
             resumed = subprocess.run(
                 command,
                 check=False,
                 capture_output=True,
-                text=True,
+                encoding="utf-8",
             )
 
             self.assertEqual(applied.returncode, 0, applied.stderr)

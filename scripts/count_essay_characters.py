@@ -17,6 +17,13 @@ TEXT_BLOCK = re.compile(
 )
 
 
+def configure_utf8_stdio() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding="utf-8")
+
+
 def extract_blocks(source: str, plain: bool = False) -> list[str]:
     return [source] if plain else TEXT_BLOCK.findall(source)
 
@@ -54,6 +61,7 @@ def result_for(path: Path, plain: bool) -> dict[str, Any]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    configure_utf8_stdio()
     args = parse_args(argv)
     try:
         result = result_for(args.file, args.plain)

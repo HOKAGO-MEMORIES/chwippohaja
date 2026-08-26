@@ -42,7 +42,7 @@ class CountEssayCharactersTest(unittest.TestCase):
                 [sys.executable, str(SCRIPT), "--json", str(path)],
                 check=False,
                 capture_output=True,
-                text=True,
+                encoding="utf-8",
             )
             self.assertEqual(completed.returncode, 0, completed.stderr)
             result = json.loads(completed.stdout)
@@ -57,7 +57,7 @@ class CountEssayCharactersTest(unittest.TestCase):
                 [sys.executable, str(SCRIPT), str(path)],
                 check=False,
                 capture_output=True,
-                text=True,
+                encoding="utf-8",
             )
             self.assertEqual(completed.returncode, 1)
             self.assertIn("--plain", completed.stderr)
