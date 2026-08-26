@@ -100,6 +100,10 @@ Notion에 기존 지원 관리 데이터베이스가 없으면 사용자가 선�
 python -m unittest discover -s tests -v
 ```
 
+## 라이선스
+
+[MIT License](LICENSE)
+
 ## 상태
 
 초기 설정과 취업 지원 워크플로우를 제공합니다. 실제 지원 사례로 검증한 뒤 단계 이름과 검증 기준을 좁게 조정하는 방식으로 개선합니다.
