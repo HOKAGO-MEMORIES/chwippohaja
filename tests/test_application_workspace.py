@@ -50,6 +50,7 @@ class ApplicationWorkspaceTest(unittest.TestCase):
             self.assertTrue((application / "01_공고_JD").is_dir())
             self.assertTrue((application / "02_작성중").is_dir())
             self.assertTrue((application / "99_최종제출").is_dir())
+            self.assertFalse((application / "03_검토기록").exists())
 
     def test_second_role_uses_role_suffix(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
