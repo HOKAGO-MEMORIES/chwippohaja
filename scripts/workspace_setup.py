@@ -34,11 +34,9 @@ BASE_DIRECTORIES = (
     Path("작성템플릿"),
     Path("증빙서류"),
     Path("증빙서류") / "학력",
-    Path("증빙서류") / "자격증",
-    Path("증빙서류") / "어학",
+    Path("증빙서류") / "자격증_어학",
     Path("증빙서류") / "교육_수상",
-    Path("증빙서류") / "경력",
-    Path("증빙서류") / "병역",
+    Path("증빙서류") / "경력_병역",
     Path("증빙서류") / "사진_서명",
     Path("증빙서류") / "민감서류",
 )
@@ -287,13 +285,14 @@ def config_for(
     season: str,
     notion: str,
     drive_plugin: str,
+    profile_status: str = "empty",
 ) -> dict[str, Any]:
     return {
         "schema_version": 1,
         "workspace_root": ".",
         "storage_mode": storage,
         "active_season": season,
-        "profile_status": "empty",
+        "profile_status": profile_status,
         "integrations": {
             "google_drive": drive_plugin,
             "notion": notion,
@@ -308,6 +307,7 @@ def setup_plan(
     notion: str,
     drive_plugin: str,
     adopt: bool,
+    profile_status: str | None = None,
 ) -> dict[str, Any]:
     root = validate_root(root)
     season = validate_season(season)
@@ -315,6 +315,9 @@ def setup_plan(
         raise SetupError(f"지원하지 않는 저장 방식입니다: {storage}")
     if notion not in INTEGRATION_STATES or drive_plugin not in INTEGRATION_STATES:
         raise SetupError("지원하지 않는 연결 상태입니다.")
+    selected_profile_status = profile_status or "empty"
+    if selected_profile_status not in PROFILE_STATUSES:
+        raise SetupError("지원하지 않는 정보 설정 상태입니다.")
     state = inspect_workspace(root)
     if state["status"] == "invalid":
         raise SetupError(str(state.get("reason", "워크스페이스 상태를 확인할 수 없습니다.")))
@@ -329,35 +332,60 @@ def setup_plan(
     if state["status"] in {"adoptable", "nonempty"} and not adopt:
         raise SetupError("기존 파일이 있습니다. 보존하면서 가져오려면 --adopt를 사용하세요.")
 
-    directories = (*BASE_DIRECTORIES, Path(season), MARKER.parent)
+    adopting = state["status"] in {"adoptable", "nonempty"} and adopt
+    if not adopting and selected_profile_status != "empty":
+        raise SetupError(
+            "새 워크스페이스의 정보 설정 상태는 empty로 시작합니다. "
+            "환경 설정 후 profile-status로 갱신하세요."
+        )
+    directories = (
+        (Path(season), MARKER.parent)
+        if adopting
+        else (*BASE_DIRECTORIES, Path(season), MARKER.parent)
+    )
     create: list[str] = []
     preserve: list[str] = []
 
     if not root.exists():
         create.append(".")
+    elif adopting:
+        for target in sorted(root.iterdir(), key=lambda path: path.name.casefold()):
+            if target == root / MARKER.parent:
+                continue
+            suffix = "/" if target.is_dir() else ""
+            preserve.append(target.name + suffix)
     for relative in directories:
         target = root / relative
         if target.exists() and not target.is_dir():
             raise SetupError(f"폴더 경로에 같은 이름의 파일이 있습니다: {target}")
         (preserve if target.exists() else create).append(relative.as_posix() + "/")
-    for relative in ASSET_FILES:
-        target = root / relative
-        if target.exists() and not target.is_file():
-            raise SetupError(f"파일 경로에 같은 이름의 폴더가 있습니다: {target}")
-        (preserve if target.exists() else create).append(relative.as_posix())
+    if not adopting:
+        for relative in ASSET_FILES:
+            target = root / relative
+            if target.exists() and not target.is_file():
+                raise SetupError(f"파일 경로에 같은 이름의 폴더가 있습니다: {target}")
+            (preserve if target.exists() else create).append(relative.as_posix())
     for relative in OPTIONAL_RULE_FILES:
         target = root / relative
         if target.exists():
             suffix = "/" if target.is_dir() else ""
             preserve.append(relative.as_posix() + suffix)
     create.append(MARKER.as_posix())
+    create = list(dict.fromkeys(create))
+    preserve = list(dict.fromkeys(preserve))
 
     return {
         "root": str(root),
         "status": "adopt" if state["status"] in {"adoptable", "nonempty"} else "new",
         "create": create,
         "preserve": preserve,
-        "config": config_for(storage, season, notion, drive_plugin),
+        "config": config_for(
+            storage,
+            season,
+            notion,
+            drive_plugin,
+            selected_profile_status,
+        ),
     }
 
 
@@ -377,8 +405,17 @@ def apply_setup(
     notion: str,
     drive_plugin: str,
     adopt: bool,
+    profile_status: str | None = None,
 ) -> dict[str, Any]:
-    plan = setup_plan(root, storage, season, notion, drive_plugin, adopt)
+    plan = setup_plan(
+        root,
+        storage,
+        season,
+        notion,
+        drive_plugin,
+        adopt,
+        profile_status,
+    )
     if plan["status"] == "already-configured":
         return plan
 
@@ -386,7 +423,12 @@ def apply_setup(
     parent = nearest_existing_parent(root)
     if not parent.is_dir() or not os.access(parent, os.W_OK):
         raise SetupError(f"선택한 경로에 쓸 수 없습니다: {root}")
-    missing_assets = [relative for relative in ASSET_FILES if not (ASSET_ROOT / relative).is_file()]
+    adopting = plan["status"] == "adopt"
+    missing_assets = (
+        []
+        if adopting
+        else [relative for relative in ASSET_FILES if not (ASSET_ROOT / relative).is_file()]
+    )
     if missing_assets:
         names = ", ".join(relative.as_posix() for relative in missing_assets)
         raise SetupError(f"온보딩 템플릿이 없습니다: {names}")
@@ -405,7 +447,11 @@ def apply_setup(
                 created_directories.append(directory)
 
         directories = sorted(
-            (*BASE_DIRECTORIES, Path(validate_season(season)), MARKER.parent),
+            (
+                (Path(validate_season(season)), MARKER.parent)
+                if adopting
+                else (*BASE_DIRECTORIES, Path(validate_season(season)), MARKER.parent)
+            ),
             key=lambda path: len(path.parts),
         )
         for relative in directories:
@@ -416,14 +462,15 @@ def apply_setup(
             elif not target.is_dir():
                 raise SetupError(f"폴더를 만들 수 없습니다. 같은 이름의 파일이 있습니다: {target}")
 
-        for relative in ASSET_FILES:
-            source = ASSET_ROOT / relative
-            destination = root / relative
-            if destination.exists():
-                continue
-            with destination.open("xb") as output:
-                output.write(source.read_bytes())
-            created_files.append(destination)
+        if not adopting:
+            for relative in ASSET_FILES:
+                source = ASSET_ROOT / relative
+                destination = root / relative
+                if destination.exists():
+                    continue
+                with destination.open("xb") as output:
+                    output.write(source.read_bytes())
+                created_files.append(destination)
 
         marker = root / MARKER
         with marker.open("x", encoding="utf-8") as output:
@@ -525,6 +572,11 @@ def add_setup_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--season", required=True)
     parser.add_argument("--notion", choices=INTEGRATION_STATES, default="disabled")
     parser.add_argument("--drive-plugin", choices=INTEGRATION_STATES, default="disabled")
+    parser.add_argument(
+        "--profile-status",
+        choices=PROFILE_STATUSES,
+        help="기존 환경에서 사용자가 확인한 정보 준비 상태",
+    )
     parser.add_argument("--adopt", action="store_true", help="기존 파일을 보존하며 구조를 가져오기")
 
 
@@ -604,6 +656,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.notion,
                 args.drive_plugin,
                 args.adopt,
+                args.profile_status,
             )
     except SetupError as exc:
         print(json.dumps({"status": "error", "message": str(exc)}, ensure_ascii=False, indent=2))

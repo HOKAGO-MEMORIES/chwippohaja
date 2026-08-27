@@ -113,6 +113,14 @@ python scripts/workspace_setup.py plan \
 
 기존 구조를 가져올 때만 `--adopt`를 추가한다. 생성할 폴더와 파일, 그대로 보존할 항목을 사용자에게 보여준다.
 
+새 워크스페이스와 기존 환경 가져오기는 다르게 처리한다.
+
+- 새 워크스페이스는 기본 폴더, 빈 공통자료와 작성 템플릿 및 활성 시즌을 생성한다.
+- 기존 환경 가져오기는 기존 폴더 이름과 템플릿을 운영 구조로 채택한다. 표식과 사용자가 선택한 활성 시즌 폴더 외에는 만들지 않는다.
+- `자격증_어학`, `경력_병역`처럼 의미가 분명한 통합 폴더가 있으면 그대로 사용하고 분리 폴더를 추가하지 않는다.
+- 기존 폴더가 권장 이름과 달라도 역할을 알 수 있으면 이름을 바꾸거나 표준 폴더를 병렬로 만들지 않는다. 역할이 불명확할 때만 사용자에게 확인한다.
+- 기존 환경의 `profile_status`는 파일 수로 추측하지 않는다. 사용자가 확인된 개인 사실이 없다고 하면 `empty`, 정리 중이면 `in_progress`, 현재 지원에 충분하다고 확인하면 `ready`를 계획에 명시한다.
+
 사용자가 승인하면 같은 인자로 `apply`를 실행한다.
 
 ```bash
@@ -126,6 +134,21 @@ python scripts/workspace_setup.py apply \
 
 Google Drive 동기화 폴더는 `--storage google-drive`를 사용한다.
 
+기존 환경을 가져오는 예시는 다음과 같다.
+
+```bash
+python scripts/workspace_setup.py plan \
+  --root "선택한 기존 경로" \
+  --storage google-drive \
+  --season "2026 하반기" \
+  --notion pending \
+  --drive-plugin enabled \
+  --profile-status ready \
+  --adopt
+```
+
+승인 후 같은 인자로 `apply`를 실행한다. `plan`과 `apply`가 제시하는 생성 항목이 다르면 적용하지 않는다.
+
 ## 완료 확인
 
 적용 후 `discover`를 다시 실행하고 다음을 확인한다.
@@ -133,7 +156,9 @@ Google Drive 동기화 폴더는 `--storage google-drive`를 사용한다.
 - 상태가 `configured`다.
 - `.chwippohaja/workspace.json`에 절대 경로와 인증 정보가 없다.
 - 새 워크스페이스의 `profile_status`가 `empty`다.
-- 공통자료, 작성템플릿, 증빙서류와 활성 시즌 폴더가 있다.
+- 기존 환경은 사용자가 확인한 `profile_status`가 기록됐다.
+- 새 워크스페이스에는 공통자료, 작성템플릿, 증빙서류와 활성 시즌 폴더가 있다.
+- 기존 환경은 계획에 없던 기본 폴더와 템플릿이 생기지 않았다.
 - 기존 파일이 변경되지 않았다.
 - 요청한 연결 기능의 현재 상태를 사용자에게 알렸다.
 
