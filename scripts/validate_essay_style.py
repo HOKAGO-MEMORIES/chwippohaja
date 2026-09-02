@@ -19,6 +19,9 @@ CONNECTIVE_COMMA = re.compile(
     r"[가-힣A-Za-z0-9_)`]+(?:하고|했고|하며|했으며|지만|했지만|는데|했는데|면서|해서),"
 )
 SUMMARY = re.compile(r"^\[[^\[\]\n]+\]$")
+DECLARATIVE_SUMMARY_ENDING = re.compile(r"[다요][.!?]?$")
+SUMMARY_TERMINAL_PUNCTUATION = re.compile(r"[.!?]$")
+OUTLINE_LINE = re.compile(r"(?m)^[ \t]*(?:[-*+][ \t]+|\d+[.)][ \t]+)")
 
 
 def configure_utf8_stdio() -> None:
@@ -71,17 +74,44 @@ def analyze_block(content: str, index: int, require_summary: bool) -> dict[str, 
         )
 
     english = occurrences(content, ENGLISH_TOKEN)
-    first_line = content.splitlines()[0].strip() if content.splitlines() else ""
+    lines = content.splitlines()
+    first_line = lines[0].strip() if lines else ""
     summary_ok = bool(SUMMARY.fullmatch(first_line)) if require_summary else None
+    summary_text = first_line[1:-1].strip() if summary_ok else ""
+    summary_declarative = (
+        bool(DECLARATIVE_SUMMARY_ENDING.search(summary_text))
+        if require_summary and summary_ok
+        else None
+    )
+    summary_punctuated = (
+        bool(SUMMARY_TERMINAL_PUNCTUATION.search(summary_text))
+        if require_summary and summary_ok
+        else None
+    )
+    outline_lines = occurrences(content, OUTLINE_LINE)
+    if summary_ok:
+        outline_lines = [item for item in outline_lines if item["line"] > 1]
     return {
         "block": index,
         "middots": middots,
         "english_candidates": english,
         "connective_commas": occurrences(content, CONNECTIVE_COMMA),
+        "outline_lines": outline_lines,
         "summary": {
             "required": require_summary,
             "present": summary_ok,
             "first_line": first_line,
+            "style": (
+                "declarative"
+                if summary_declarative
+                else "punctuated"
+                if summary_punctuated
+                else "nominal"
+                if summary_declarative is False
+                else "missing"
+                if require_summary
+                else "unchecked"
+            ),
         },
     }
 
@@ -109,6 +139,13 @@ def analyze(source: str, plain: bool = False, require_summary: bool = True) -> d
             "missing_summaries": sum(
                 1 for item in results if item["summary"]["present"] is False
             ),
+            "declarative_summaries": sum(
+                1 for item in results if item["summary"]["style"] == "declarative"
+            ),
+            "punctuated_summaries": sum(
+                1 for item in results if item["summary"]["style"] == "punctuated"
+            ),
+            "outline_lines": sum(len(item["outline_lines"]) for item in results),
         },
     }
 
@@ -144,12 +181,14 @@ def main(argv: list[str] | None = None) -> int:
     totals = result["totals"]
     print(
         "blocks={blocks} middots={middots} english_candidates={english_candidates} "
-        "connective_commas={connective_commas} missing_summaries={missing_summaries}".format(
+        "connective_commas={connective_commas} missing_summaries={missing_summaries} "
+        "declarative_summaries={declarative_summaries} "
+        "punctuated_summaries={punctuated_summaries} outline_lines={outline_lines}".format(
             **totals
         )
     )
     for block in result["blocks"]:
-        for name in ("middots", "english_candidates", "connective_commas"):
+        for name in ("middots", "english_candidates", "connective_commas", "outline_lines"):
             for item in block[name]:
                 value = item.get("value", MIDDOT)
                 print(
@@ -159,6 +198,16 @@ def main(argv: list[str] | None = None) -> int:
         if block["summary"]["present"] is False:
             print(
                 f"block {block['block']} missing_summary: "
+                f"{block['summary']['first_line']}"
+            )
+        elif block["summary"]["style"] == "declarative":
+            print(
+                f"block {block['block']} declarative_summary: "
+                f"{block['summary']['first_line']}"
+            )
+        elif block["summary"]["style"] == "punctuated":
+            print(
+                f"block {block['block']} punctuated_summary: "
                 f"{block['summary']['first_line']}"
             )
     return 0
