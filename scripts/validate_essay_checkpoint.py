@@ -154,6 +154,8 @@ def validate_pre_draft(checkpoint: dict[str, Any]) -> list[str]:
         expected = "ready_partial"
     if expected and status != expected:
         errors.append(f"document_status는 질문별 action에 따라 {expected}여야 합니다.")
+    if status == "blocked":
+        errors.append("모든 문항이 보류되어 초안 작성 단계로 진행할 수 없습니다.")
     return errors
 
 
@@ -228,6 +230,11 @@ def validate_draft_review(checkpoint: dict[str, Any]) -> list[str]:
     if expected and status not in expected:
         expected_text = " 또는 ".join(sorted(expected))
         errors.append(f"document_status는 질문별 answer_status에 따라 {expected_text}여야 합니다.")
+
+    if status == "needs_revision":
+        errors.append("치명 이슈를 수정하고 다시 검사해야 합니다.")
+    if status == "blocked":
+        errors.append("작성된 유효 답변이 없어 번호가 붙은 초안으로 저장할 수 없습니다.")
 
     if status in {"valid_draft", "partial_draft", "final_candidate"}:
         style_review = checkpoint.get("style_review")

@@ -184,6 +184,29 @@ class ValidateEssayCheckpointTest(unittest.TestCase):
         self.assertEqual(completed.returncode, 2)
         self.assertIn("valid=false", completed.stdout)
 
+    def test_all_deferred_pre_draft_is_blocked(self) -> None:
+        checkpoint = {
+            "schema_version": 1,
+            "phase": "pre_draft",
+            "document_status": "blocked",
+            "questions": [pre_question("1", "defer")],
+        }
+        errors = validator.validate(checkpoint)
+        self.assertTrue(any("진행할 수 없습니다" in error for error in errors))
+
+    def test_needs_revision_draft_cannot_pass_checkpoint(self) -> None:
+        answer = valid_answer("1")
+        answer["answer_status"] = "needs_revision"
+        answer["fatal_issues"] = ["문항의 필수 질문 누락"]
+        checkpoint = {
+            "schema_version": 1,
+            "phase": "draft_review",
+            "document_status": "needs_revision",
+            "questions": [answer],
+        }
+        errors = validator.validate(checkpoint)
+        self.assertTrue(any("다시 검사" in error for error in errors))
+
 
 if __name__ == "__main__":
     unittest.main()
