@@ -103,6 +103,18 @@ STYLE_REVIEW = {
     "character_count_checked": True,
 }
 
+REVISION = {
+    "previous_version": None,
+    "purpose": "문항에 맞는 첫 유효 초안 작성",
+    "issue_ids": [],
+    "changes": ["확인된 소재로 첫 답변 작성"],
+    "resolved_issues": [],
+    "remaining_issues": [],
+    "remaining_fatal_issues": [],
+    "character_count_impact": "첫 버전 850자",
+    "all_identified_issues_reviewed": True,
+}
+
 
 class ValidateEssayCheckpointTest(unittest.TestCase):
     def test_accepts_full_pre_draft_checkpoint(self) -> None:
@@ -143,6 +155,7 @@ class ValidateEssayCheckpointTest(unittest.TestCase):
             "document_status": "partial_draft",
             "questions": [valid_answer("1"), deferred_answer("2")],
             "style_review": STYLE_REVIEW,
+            "revision": REVISION,
         }
         self.assertEqual(validator.validate(checkpoint), [])
 
@@ -155,6 +168,7 @@ class ValidateEssayCheckpointTest(unittest.TestCase):
             "document_status": "valid_draft",
             "questions": [answer],
             "style_review": STYLE_REVIEW,
+            "revision": REVISION,
         }
         errors = validator.validate(checkpoint)
         self.assertTrue(any("valid로 판정할 수 없습니다" in error for error in errors))
@@ -168,6 +182,7 @@ class ValidateEssayCheckpointTest(unittest.TestCase):
             "document_status": "final_candidate",
             "questions": [answer],
             "style_review": STYLE_REVIEW,
+            "revision": REVISION,
         }
         errors = validator.validate(checkpoint)
         self.assertTrue(any("경험의 구체적인 의미" in error for error in errors))
@@ -213,6 +228,31 @@ class ValidateEssayCheckpointTest(unittest.TestCase):
         }
         errors = validator.validate(checkpoint)
         self.assertTrue(any("다시 검사" in error for error in errors))
+
+    def test_stored_draft_requires_revision_record(self) -> None:
+        checkpoint = {
+            "schema_version": 1,
+            "phase": "draft_review",
+            "document_status": "valid_draft",
+            "questions": [valid_answer("1")],
+            "style_review": STYLE_REVIEW,
+        }
+        errors = validator.validate(checkpoint)
+        self.assertTrue(any("revision 기록" in error for error in errors))
+
+    def test_stored_draft_rejects_remaining_fatal_issue(self) -> None:
+        revision = dict(REVISION)
+        revision["remaining_fatal_issues"] = ["R4: 필수 하위 질문 누락"]
+        checkpoint = {
+            "schema_version": 1,
+            "phase": "draft_review",
+            "document_status": "valid_draft",
+            "questions": [valid_answer("1")],
+            "style_review": STYLE_REVIEW,
+            "revision": revision,
+        }
+        errors = validator.validate(checkpoint)
+        self.assertTrue(any("미해결 치명 이슈" in error for error in errors))
 
 
 if __name__ == "__main__":

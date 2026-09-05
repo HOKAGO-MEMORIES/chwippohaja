@@ -129,6 +129,24 @@ python scripts/validate_essay_checkpoint.py 작성설계.md
 }
 ```
 
+저장하는 모든 초안과 수정본에는 버전별 수정 기록도 넣는다. 첫 버전은 `previous_version`을 `null`로 두고, 이후 버전은 실제 이전 파일명을 기록한다.
+
+```json
+"revision": {
+  "previous_version": null,
+  "purpose": "문항에 맞는 첫 유효 초안 작성",
+  "issue_ids": [],
+  "changes": ["확인된 소재로 첫 답변 작성"],
+  "resolved_issues": [],
+  "remaining_issues": [],
+  "remaining_fatal_issues": [],
+  "character_count_impact": "첫 버전 850자",
+  "all_identified_issues_reviewed": true
+}
+```
+
+`changes`에는 문구 교체 목록만 쓰지 않고 판단, 정보 또는 구조가 실제로 어떻게 달라졌는지 적는다. 검토에서 발견한 전체 이슈를 확인하기 전에는 `all_identified_issues_reviewed`를 `true`로 두지 않는다. 우선순위가 높은 몇 건만 고친 채 남은 필수 문제를 생략해서는 안 되며, 미해결 치명 이슈가 하나라도 있으면 저장 가능한 초안으로 통과하지 않는다.
+
 문서 상태는 다음과 같다.
 
 - 모든 문항이 `valid`: `valid_draft`

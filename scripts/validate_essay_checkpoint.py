@@ -43,6 +43,9 @@ REQUIRED_STYLE_CHECKS = (
     "candidates_reviewed",
     "character_count_checked",
 )
+REQUIRED_REVISION_CHECKS = (
+    "all_identified_issues_reviewed",
+)
 
 
 def configure_utf8_stdio() -> None:
@@ -253,6 +256,38 @@ def validate_draft_review(checkpoint: dict[str, Any]) -> list[str]:
             for name in REQUIRED_STYLE_CHECKS:
                 if style_review.get(name) is not True:
                     errors.append(f"style_review.{name}가 true여야 합니다.")
+
+        revision = checkpoint.get("revision")
+        if not isinstance(revision, dict):
+            errors.append("저장 가능한 초안에는 revision 기록이 필요합니다.")
+        else:
+            previous_version = revision.get("previous_version")
+            if previous_version is not None and (
+                not isinstance(previous_version, str) or not previous_version.strip()
+            ):
+                errors.append("revision.previous_version은 null 또는 비어 있지 않은 문자열이어야 합니다.")
+            if not isinstance(revision.get("purpose"), str) or not revision["purpose"].strip():
+                errors.append("revision.purpose가 필요합니다.")
+            if not string_list(revision.get("issue_ids")):
+                errors.append("revision.issue_ids는 문자열 배열이어야 합니다.")
+            if not nonempty_list(revision.get("changes")):
+                errors.append("revision.changes에 한 개 이상의 실제 변경 사항이 필요합니다.")
+            if not string_list(revision.get("resolved_issues")):
+                errors.append("revision.resolved_issues는 문자열 배열이어야 합니다.")
+            if not string_list(revision.get("remaining_issues")):
+                errors.append("revision.remaining_issues는 문자열 배열이어야 합니다.")
+            remaining_fatal = revision.get("remaining_fatal_issues")
+            if not string_list(remaining_fatal):
+                errors.append("revision.remaining_fatal_issues는 문자열 배열이어야 합니다.")
+            elif remaining_fatal:
+                errors.append("저장 가능한 초안에는 미해결 치명 이슈가 남아 있으면 안 됩니다.")
+            if not isinstance(revision.get("character_count_impact"), str) or not revision[
+                "character_count_impact"
+            ].strip():
+                errors.append("revision.character_count_impact가 필요합니다.")
+            for name in REQUIRED_REVISION_CHECKS:
+                if revision.get(name) is not True:
+                    errors.append(f"revision.{name}가 true여야 합니다.")
     return errors
 
 
