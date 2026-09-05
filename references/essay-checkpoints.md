@@ -111,6 +111,15 @@ python scripts/validate_essay_checkpoint.py 작성설계.md
 
 문서 수준에는 표현과 글자 수 검토 상태를 함께 기록한다.
 
+`content_checks`의 판단 기준은 다음과 같다.
+
+- `question_type_fit_verified`: 문항의 핵심 동사와 소재에서 실제로 드러나는 행동이 일치한다.
+- `material_fit_verified`: 키워드가 아니라 확인된 판단, 행동과 결과로 소재 적합성을 검토했다.
+- `judgment_action_result_connected`: 본인의 판단이 행동으로 이어지고 결과와의 인과관계가 성립한다.
+- `reader_effect_clear`: 구현 세부를 모두 알지 못해도 문제와 실제 전후 변화를 이해할 수 있다.
+- `reflection_requirement_met`: 문항이 직접 요구한 배움이나 느낀 점에 답했다.
+- `experience_meaning_present`: 사건에서 도출된 구체적인 이해가 드러난다.
+
 ```json
 "style_review": {
   "validator_run": true,
