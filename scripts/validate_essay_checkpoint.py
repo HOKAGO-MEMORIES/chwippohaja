@@ -30,9 +30,12 @@ ACTIONS = {"write", "defer"}
 ANSWER_STATUSES = {"valid", "deferred", "needs_revision"}
 REQUIRED_CONTENT_CHECKS = (
     "all_subquestions_answered",
+    "question_type_fit_verified",
     "facts_verified",
     "role_verified",
     "material_fit_verified",
+    "judgment_action_result_connected",
+    "reader_effect_clear",
 )
 REQUIRED_STYLE_CHECKS = (
     "validator_run",
@@ -111,6 +114,9 @@ def validate_pre_draft(checkpoint: dict[str, Any]) -> list[str]:
         if not isinstance(question, dict):
             continue
         identifier = question.get("id", "?")
+        question_type = question.get("question_type")
+        if not isinstance(question_type, str) or not question_type.strip():
+            errors.append(f"{identifier}: question_type이 필요합니다.")
         if not nonempty_list(question.get("subquestions")):
             errors.append(f"{identifier}: subquestions에 한 개 이상의 하위 질문이 필요합니다.")
         if not isinstance(question.get("experience_question"), bool):
@@ -120,6 +126,9 @@ def validate_pre_draft(checkpoint: dict[str, Any]) -> list[str]:
         fit = question.get("material_fit")
         if fit not in MATERIAL_FITS:
             errors.append(f"{identifier}: material_fit이 올바르지 않습니다.")
+        fit_reason = question.get("material_fit_reason")
+        if not isinstance(fit_reason, str) or not fit_reason.strip():
+            errors.append(f"{identifier}: material_fit_reason이 필요합니다.")
         action = question.get("action")
         if action not in ACTIONS:
             errors.append(f"{identifier}: action은 write 또는 defer여야 합니다.")

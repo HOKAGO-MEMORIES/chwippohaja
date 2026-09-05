@@ -28,10 +28,12 @@ JSON의 설명을 대신하는 자연어 작성 설계와 검토 근거도 문�
 ```json
 {
   "id": "1",
+  "question_type": "학습",
   "subquestions": ["문항의 필수 하위 질문"],
   "experience_question": true,
   "reflection_required": false,
   "material_fit": "direct",
+  "material_fit_reason": "부족했던 지식과 이를 익혀 적용한 과정이 직접 드러난다.",
   "evidence": ["확인된 사실과 출처"],
   "missing_information": [],
   "follow_up_questions": [],
@@ -39,7 +41,9 @@ JSON의 설명을 대신하는 자연어 작성 설계와 검토 근거도 문�
 }
 ```
 
+- `question_type`: 문항의 핵심 동사를 기준으로 정한 유형이다. 예를 들어 학습, 원칙, 소통, 개선, 지원동기처럼 기록한다.
 - `material_fit`: `direct`, `conditional_resolved`, `unsuitable`, `missing`
+- `material_fit_reason`: 기술명이나 주제의 유사성이 아니라 해당 경험의 실제 행동이 문항 유형을 어떻게 증명하는지 적는다.
 - `action`: `write`, `defer`
 - `write`: 소재가 직접 적합하거나 조건부 적합이 확인된 보조 근거로 해소됐고, 직접 근거가 있으며 미확정 정보가 없을 때만 사용한다.
 - `defer`: 소재가 부적합하거나 필요한 경험이 없을 때 사용한다. 필요한 정보와 사용자 질문을 모두 기록한다.
@@ -77,9 +81,12 @@ python scripts/validate_essay_checkpoint.py 작성설계.md
   "follow_up_questions": [],
   "content_checks": {
     "all_subquestions_answered": true,
+    "question_type_fit_verified": true,
     "facts_verified": true,
     "role_verified": true,
     "material_fit_verified": true,
+    "judgment_action_result_connected": true,
+    "reader_effect_clear": true,
     "reflection_requirement_met": null,
     "experience_meaning_present": true
   }
@@ -138,6 +145,7 @@ python scripts/validate_essay_checkpoint.py 자소서.md
 검사기는 소재가 실제로 적합한지, 성찰이 자연스러운지와 문장이 좋은지를 판단하지 않는다. 다음 항목은 반드시 원문과 대조해 사람이 읽는 의미 검토로 판정한다.
 
 - 문항과 소재의 직접적인 연결
+- 문항의 핵심 동사와 소재에서 실제로 드러나는 행동의 일치
 - 본인의 판단과 팀의 결과 구분
 - 사건에서 도출된 구체적인 이해
 - 사용자가 채택한 문안과 수정 이력

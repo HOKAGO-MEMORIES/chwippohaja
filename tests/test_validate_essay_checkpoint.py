@@ -31,10 +31,12 @@ def pre_question(identifier: str, action: str = "write") -> dict[str, object]:
     if action == "write":
         return {
             "id": identifier,
+            "question_type": "학습",
             "subquestions": ["문항의 핵심 질문"],
             "experience_question": True,
             "reflection_required": False,
             "material_fit": "direct",
+            "material_fit_reason": "부족했던 지식과 실제 학습 과정을 직접 보여준다.",
             "evidence": ["확인된 프로젝트 기록"],
             "missing_information": [],
             "follow_up_questions": [],
@@ -42,10 +44,12 @@ def pre_question(identifier: str, action: str = "write") -> dict[str, object]:
         }
     return {
         "id": identifier,
+        "question_type": "소통",
         "subquestions": ["문항의 핵심 질문"],
         "experience_question": True,
         "reflection_required": True,
         "material_fit": "missing",
+        "material_fit_reason": "상대와 주고받은 정보와 행동 변화가 확인되지 않는다.",
         "evidence": [],
         "missing_information": ["해당 행동을 보여주는 경험"],
         "follow_up_questions": ["관련 경험에서 본인이 한 행동은 무엇인가요?"],
@@ -66,9 +70,12 @@ def valid_answer(identifier: str) -> dict[str, object]:
         "follow_up_questions": [],
         "content_checks": {
             "all_subquestions_answered": True,
+            "question_type_fit_verified": True,
             "facts_verified": True,
             "role_verified": True,
             "material_fit_verified": True,
+            "judgment_action_result_connected": True,
+            "reader_effect_clear": True,
             "reflection_requirement_met": None,
             "experience_meaning_present": True,
         },
