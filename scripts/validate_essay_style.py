@@ -22,6 +22,12 @@ SUMMARY = re.compile(r"^\[[^\[\]\n]+\]$")
 DECLARATIVE_SUMMARY_ENDING = re.compile(r"[다요][.!?]?$")
 SUMMARY_TERMINAL_PUNCTUATION = re.compile(r"[.!?]$")
 OUTLINE_LINE = re.compile(r"(?m)^[ \t]*(?:[-*+][ \t]+|\d+[.)][ \t]+)")
+STRUCTURAL_TOTALS = (
+    "missing_summaries",
+    "declarative_summaries",
+    "punctuated_summaries",
+    "outline_lines",
+)
 
 
 def configure_utf8_stdio() -> None:
@@ -124,7 +130,7 @@ def analyze(source: str, plain: bool = False, require_summary: bool = True) -> d
         analyze_block(content, index, require_summary)
         for index, content in enumerate(blocks, start=1)
     ]
-    return {
+    result = {
         "mode": "plain" if plain else "text-blocks",
         "blocks": results,
         "totals": {
@@ -148,6 +154,10 @@ def analyze(source: str, plain: bool = False, require_summary: bool = True) -> d
             "outline_lines": sum(len(item["outline_lines"]) for item in results),
         },
     }
+    result["structural_valid"] = not any(
+        result["totals"][name] for name in STRUCTURAL_TOTALS
+    )
+    return result
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -158,6 +168,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--no-summary",
         action="store_true",
         help="대괄호 핵심 요약 검사를 생략",
+    )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="요약 또는 본문 구조 오류가 있으면 종료 코드 2를 반환",
     )
     parser.add_argument("file", type=Path)
     return parser.parse_args(argv)
@@ -176,41 +191,46 @@ def main(argv: list[str] | None = None) -> int:
     result["file"] = str(args.file)
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
-        return 0
-
-    totals = result["totals"]
-    print(
-        "blocks={blocks} middots={middots} english_candidates={english_candidates} "
-        "connective_commas={connective_commas} missing_summaries={missing_summaries} "
-        "declarative_summaries={declarative_summaries} "
-        "punctuated_summaries={punctuated_summaries} outline_lines={outline_lines}".format(
-            **totals
+    else:
+        totals = result["totals"]
+        print(
+            "blocks={blocks} middots={middots} english_candidates={english_candidates} "
+            "connective_commas={connective_commas} missing_summaries={missing_summaries} "
+            "declarative_summaries={declarative_summaries} "
+            "punctuated_summaries={punctuated_summaries} outline_lines={outline_lines} "
+            "structural_valid={structural_valid}".format(
+                structural_valid=str(result["structural_valid"]).lower(), **totals
+            )
         )
-    )
-    for block in result["blocks"]:
-        for name in ("middots", "english_candidates", "connective_commas", "outline_lines"):
-            for item in block[name]:
-                value = item.get("value", MIDDOT)
+        for block in result["blocks"]:
+            for name in (
+                "middots",
+                "english_candidates",
+                "connective_commas",
+                "outline_lines",
+            ):
+                for item in block[name]:
+                    value = item.get("value", MIDDOT)
+                    print(
+                        f"block {block['block']} {name} line {item['line']} "
+                        f"column {item['column']}: {value} | {item['context']}"
+                    )
+            if block["summary"]["present"] is False:
                 print(
-                    f"block {block['block']} {name} line {item['line']} "
-                    f"column {item['column']}: {value} | {item['context']}"
+                    f"block {block['block']} missing_summary: "
+                    f"{block['summary']['first_line']}"
                 )
-        if block["summary"]["present"] is False:
-            print(
-                f"block {block['block']} missing_summary: "
-                f"{block['summary']['first_line']}"
-            )
-        elif block["summary"]["style"] == "declarative":
-            print(
-                f"block {block['block']} declarative_summary: "
-                f"{block['summary']['first_line']}"
-            )
-        elif block["summary"]["style"] == "punctuated":
-            print(
-                f"block {block['block']} punctuated_summary: "
-                f"{block['summary']['first_line']}"
-            )
-    return 0
+            elif block["summary"]["style"] == "declarative":
+                print(
+                    f"block {block['block']} declarative_summary: "
+                    f"{block['summary']['first_line']}"
+                )
+            elif block["summary"]["style"] == "punctuated":
+                print(
+                    f"block {block['block']} punctuated_summary: "
+                    f"{block['summary']['first_line']}"
+                )
+    return 2 if args.strict and not result["structural_valid"] else 0
 
 
 if __name__ == "__main__":

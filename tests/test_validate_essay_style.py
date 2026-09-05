@@ -109,6 +109,38 @@ Java·Spring으로 Read Model을 설계했고, OOM이 없음을 확인했습니�
             result = json.loads(completed.stdout)
             self.assertEqual(result["totals"]["english_candidates"], 1)
 
+    def test_strict_cli_rejects_declarative_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "자소서.md"
+            path.write_text(
+                "```text\n[운영 가능한 시스템을 만들었습니다]\n본문입니다.\n```\n",
+                encoding="utf-8",
+            )
+            completed = subprocess.run(
+                [sys.executable, str(SCRIPT), "--strict", str(path)],
+                check=False,
+                capture_output=True,
+                encoding="utf-8",
+            )
+        self.assertEqual(completed.returncode, 2)
+        self.assertIn("structural_valid=false", completed.stdout)
+
+    def test_strict_cli_allows_review_candidates_without_structure_errors(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "자소서.md"
+            path.write_text(
+                "```text\n[검증 가능한 운영 범위]\nJava·Spring을 검토했습니다.\n```\n",
+                encoding="utf-8",
+            )
+            completed = subprocess.run(
+                [sys.executable, str(SCRIPT), "--strict", str(path)],
+                check=False,
+                capture_output=True,
+                encoding="utf-8",
+            )
+        self.assertEqual(completed.returncode, 0, completed.stdout)
+        self.assertIn("structural_valid=true", completed.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

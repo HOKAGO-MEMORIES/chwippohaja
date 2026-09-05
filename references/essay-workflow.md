@@ -331,10 +331,10 @@ python scripts/validate_essay_checkpoint.py 작성설계.md
 초안과 모든 주요 수정본은 내용 검토 뒤 다음 검사를 수행한다. `humanize-korean` 사용 여부와 관계없이 생략하지 않는다.
 
 ```bash
-python scripts/validate_essay_style.py 회사/02_작성중/자소서.md
+python scripts/validate_essay_style.py --strict 회사/02_작성중/자소서.md
 ```
 
-검사 결과는 후보를 찾는 도구이며 자동 합격 판정이 아니다. 다음 항목을 답변 본문별로 빠짐없이 판정한다.
+구조 오류가 있으면 종료 코드 2로 실패한다. 가운데점, 영어와 쉼표는 문맥에 따라 유지할 수 있으므로 후보를 찾은 뒤 다음 항목을 답변 본문별로 빠짐없이 판정한다.
 
 1. 모든 가운데점
    - 공식 고유명사 또는 문항 원문 인용이면 유지한다.
