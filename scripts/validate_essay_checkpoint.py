@@ -65,6 +65,53 @@ def string_list(value: Any) -> bool:
     return isinstance(value, list) and all(isinstance(item, str) for item in value)
 
 
+def nonempty_string(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def validate_explanation(value: Any, experience: bool, label: str) -> list[str]:
+    """Check that a concise explanation was recorded, not that it is persuasive."""
+    keys = ["direct_answer"]
+    if experience:
+        keys.extend(("context", "judgment_action", "outcome"))
+    if not isinstance(value, dict):
+        return [f"{label}: 문항에 대한 설명 객체가 필요합니다."]
+    return [f"{label}.{key}: 구체적인 설명이 필요합니다."
+            for key in keys if not nonempty_string(value.get(key))]
+
+
+def validate_reader_review(question: dict[str, Any]) -> list[str]:
+    identifier = question.get("id", "?")
+    review = question.get("reader_review")
+    if not isinstance(review, dict):
+        return [f"{identifier}: reader_review가 필요합니다. 체크박스만으로 검토를 완료할 수 없습니다."]
+    errors = validate_explanation(review.get("summary"), question.get("experience_question") is True,
+                                  f"{identifier}: reader_review.summary")
+    if not nonempty_string(review.get("question_fit")):
+        errors.append(f"{identifier}: reader_review.question_fit에 본문과 문항의 연결 근거가 필요합니다.")
+    issues = review.get("issues")
+    if not isinstance(issues, list):
+        return errors + [f"{identifier}: reader_review.issues는 배열이어야 합니다."]
+    ids = []
+    for issue in issues:
+        if not isinstance(issue, dict) or any(
+            not nonempty_string(issue.get(key)) for key in ("id", "quote", "problem")
+        ):
+            errors.append(f"{identifier}: 독해 이슈에는 id, 실제 구절 quote와 problem이 필요합니다.")
+            continue
+        ids.append(issue["id"])
+        if issue.get("status") == "resolved":
+            if not nonempty_string(issue.get("resolution")):
+                errors.append(f"{identifier}: 해결한 독해 이슈에는 실제 수정과 재검토 결과 resolution이 필요합니다.")
+        elif issue.get("status") == "open":
+            errors.append(f"{identifier}: 미해결 독해 이슈가 있는 답변은 valid가 될 수 없습니다.")
+        else:
+            errors.append(f"{identifier}: 독해 이슈 status는 open 또는 resolved여야 합니다.")
+    if len(ids) != len(set(ids)):
+        errors.append(f"{identifier}: 독해 이슈 id가 중복되었습니다.")
+    return errors
+
+
 def load_checkpoint(source: str) -> dict[str, Any]:
     matches = CHECKPOINT.findall(source)
     if len(matches) != 1:
@@ -83,8 +130,8 @@ def load_checkpoint(source: str) -> dict[str, Any]:
 
 def validate_common(checkpoint: dict[str, Any]) -> list[str]:
     errors: list[str] = []
-    if checkpoint.get("schema_version") != 1:
-        errors.append("schema_version은 1이어야 합니다.")
+    if type(checkpoint.get("schema_version")) is not int or checkpoint["schema_version"] not in (1, 2):
+        errors.append("schema_version은 1 또는 2여야 합니다.")
     questions = checkpoint.get("questions")
     if not isinstance(questions, list) or not questions:
         errors.append("questions는 비어 있지 않은 배열이어야 합니다.")
@@ -113,6 +160,8 @@ def validate_pre_draft(checkpoint: dict[str, Any]) -> list[str]:
     status = checkpoint.get("document_status")
     if status not in PRE_DRAFT_STATUSES:
         errors.append("pre_draft document_status가 올바르지 않습니다.")
+    if checkpoint.get("schema_version") == 2 and checkpoint.get("evidence_mapping_required") is not True:
+        errors.append("schema_version 2 작성 설계는 evidence_mapping_required가 true여야 합니다.")
 
     actions: list[str] = []
     for question in checkpoint.get("questions", []):
@@ -145,6 +194,11 @@ def validate_pre_draft(checkpoint: dict[str, Any]) -> list[str]:
             errors.append(f"{identifier}: missing_information은 문자열 배열이어야 합니다.")
             missing = []
         if action == "write":
+            if checkpoint.get("schema_version") == 2:
+                errors.extend(validate_explanation(question.get("writing_brief"),
+                              question.get("experience_question") is True, f"{identifier}: writing_brief"))
+                if not nonempty_list(question.get("detail_selection")):
+                    errors.append(f"{identifier}: detail_selection에 본문에 남기거나 덜어낼 정보와 이유가 필요합니다.")
             if fit not in {"direct", "conditional_resolved"}:
                 errors.append(f"{identifier}: 부적합하거나 근거 없는 소재로 write할 수 없습니다.")
             if not nonempty_list(evidence):
@@ -222,6 +276,15 @@ def validate_draft_review(checkpoint: dict[str, Any]) -> list[str]:
             errors.append(f"{identifier}: reflection_required는 boolean이어야 합니다.")
 
         if answer_status == "valid":
+            if checkpoint.get("schema_version") == 2:
+                errors.extend(validate_reader_review(question))
+                links = question.get("answer_evidence")
+                if not isinstance(links, list) or not links or any(
+                    not isinstance(link, dict) or any(not nonempty_string(link.get(key))
+                                                      for key in ("source", "quote"))
+                    for link in links
+                ):
+                    errors.append(f"{identifier}: answer_evidence에 실제 본문 구절과 출처가 필요합니다.")
             if question.get("answer_present") is not True:
                 errors.append(f"{identifier}: valid 문항에는 답변 본문이 있어야 합니다.")
             if fatal:
@@ -310,6 +373,21 @@ def validate_draft_review(checkpoint: dict[str, Any]) -> list[str]:
             for name in REQUIRED_REVISION_CHECKS:
                 if revision.get(name) is not True:
                     errors.append(f"revision.{name}가 true여야 합니다.")
+            if checkpoint.get("schema_version") == 2:
+                for question in checkpoint["questions"]:
+                    if not isinstance(question, dict):
+                        continue
+                    review = question.get("reader_review")
+                    issues = review.get("issues") if isinstance(review, dict) else None
+                    if not isinstance(issues, list):
+                        continue
+                    for issue in issues:
+                        if not isinstance(issue, dict) or issue.get("status") != "resolved":
+                            continue
+                        for field in ("issue_ids", "resolved_issues"):
+                            values = revision.get(field)
+                            if not string_list(values) or issue.get("id") not in values:
+                                errors.append(f"독해 이슈 {issue.get('id')}: revision.{field}에 연결해야 합니다.")
     return errors
 
 

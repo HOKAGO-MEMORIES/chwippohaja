@@ -216,6 +216,7 @@ class WorkflowRegressions(unittest.TestCase):
         self.assertEqual(self.run_essay('check')[0],2)
 
     def test_generated_templates_support_partial_then_complete_adopted_draft(self):
+        self.body='[전체 배포 작업 제거]\n글만 바뀌어도 전체 프로그램을 배포해야 했습니다. 문제를 확인하고 구조를 바꾼 뒤 결과를 검증했습니다. 내용 갱신과 프로그램 배포를 분리해 글 수정에 전체 배포가 필요 없어졌습니다.'
         plan_source=(self.root/'작성템플릿/자소서_작성설계.md').read_text(encoding='utf-8')
         draft_source=(self.root/'작성템플릿/자소서_작성본.md').read_text(encoding='utf-8')
         profile=(self.root/'공통자료/경력_프로젝트_소재.md').read_text(encoding='utf-8')
@@ -228,6 +229,9 @@ class WorkflowRegressions(unittest.TestCase):
         plan['document_status']='ready_partial'
         q1=plan['questions'][0]
         q1.update(pre_draft()['questions'][0])
+        from test_essay_quality import brief
+        q1['writing_brief']=brief()
+        q1['detail_selection']=['문제와 변경 결과를 남기고 불필요한 구현 상세를 덜어냄']
         q1['evidence_map']=[{'subquestion':q1['subquestions'][0], 'source':'공통자료/사례.md#F1', 'claim':'문제 판단과 구조 개선 및 검증'}]
         q2=copy.deepcopy(q1)
         q2.update({'id':'2','question_type':'소통','subquestions':['어떻게 의견을 조율했는가'],
@@ -236,6 +240,8 @@ class WorkflowRegressions(unittest.TestCase):
                    'follow_up_questions':['다른 의견을 어떻게 조율했나요?']})
         plan['questions'].append(q2)
         review.update(draft_review())
+        review['schema_version']=2
+        review['questions'][0]['reader_review']={'summary':brief(),'question_fit':'문제 판단과 구조 변경 및 결과를 설명함','issues':[]}
         review['document_status']='partial_draft'
         review['questions'][0]['answer_evidence']=[{'source':'공통자료/사례.md#F1','quote':'문제를 확인하고 구조를 바꾼 뒤 결과를 검증했습니다.'}]
         deferred={'id':'2','answer_status':'deferred','answer_present':False,
@@ -255,18 +261,24 @@ class WorkflowRegressions(unittest.TestCase):
         q2.update({'action':'write','material_fit':'direct','material_fit_reason':'사용자가 대화와 합의 행동을 확인함',
                    'evidence':['사용자가 확인한 조율 사례'], 'missing_information':[], 'follow_up_questions':[],
                    'evidence_map':[{'subquestion':q2['subquestions'][0],'source':'공통자료/사례.md#F2','claim':'각자의 기준을 확인하고 합의안을 검증함'}]})
+        q2['writing_brief']={'direct_answer':'서로의 기준을 확인해 합의안을 함께 검증했다.',
+                             'context':'팀원마다 합의 기준이 달랐다.',
+                             'judgment_action':'각자의 기준을 묻고 합의안을 함께 확인했다.',
+                             'outcome':'같은 기준으로 합의안을 검증할 수 있었다.'}
         next_plan=self.plan.with_name('03_설계.md')
         next_draft=self.draft.with_name('04_답변.md')
         next_plan.write_text(checkpoint(plan),encoding='utf-8')
         review['document_status']='valid_draft'
         q2_review=copy.deepcopy(review['questions'][0])
         q2_review['id']='2'
+        q2_review['reader_review']={'summary':copy.deepcopy(q2['writing_brief']),
+                                    'question_fit':'기준의 차이와 확인 행동, 공동 검증 결과를 설명함','issues':[]}
         q2_review['answer_evidence']=[{'source':'공통자료/사례.md#F2','quote':'서로의 기준을 확인하고 합의안을 함께 검증했습니다.'}]
         review['questions'][1]=q2_review
         review['revision']['previous_version']=self.draft.name
         self.run_essay('advance','--plan',next_plan,'--draft',next_draft,'--limit','1:0:1500','--limit','2:0:1500')
         self.run_essay('plan-check')
-        next_draft.write_text('```text question=1\n'+self.body+'\n```\n```text question=2\n[합의 기준의 확인]\n서로의 기준을 확인하고 합의안을 함께 검증했습니다.\n```\n'+checkpoint(review),encoding='utf-8')
+        next_draft.write_text('```text question=1\n'+self.body+'\n```\n```text question=2\n[합의 기준의 확인]\n팀원마다 기준이 달랐습니다. 서로의 기준을 확인하고 합의안을 함께 검증했습니다. 같은 기준으로 결과를 확인할 수 있었습니다.\n```\n'+checkpoint(review),encoding='utf-8')
         self.assertEqual(self.run_essay('finish')[0],0)
         self.assertEqual(self.draft.read_bytes(),original)
         aps.select(self.app,'essay',str(next_draft),'사용자가 완성본 채택')

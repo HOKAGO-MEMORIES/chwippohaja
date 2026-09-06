@@ -184,6 +184,8 @@ def validate_run(root: Path, state: dict[str, Any]) -> dict[str, Any]:
     errors.extend(f"자소서: {item}" for item in draft_errors)
     if draft_checkpoint and draft_checkpoint.get("document_status") not in VALID_DOCUMENT_STATUSES:
         errors.append("자소서: 저장 가능한 draft_review 상태가 아닙니다.")
+    if pre_checkpoint and draft_checkpoint and pre_checkpoint.get("schema_version") != draft_checkpoint.get("schema_version"):
+        errors.append("작성 설계와 자소서의 체크포인트 schema_version이 다릅니다. 같은 버전으로 검토해야 합니다.")
 
     for checkpoint in (pre_checkpoint, draft_checkpoint):
         if checkpoint:
