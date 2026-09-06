@@ -215,10 +215,12 @@ class WorkflowRegressions(unittest.TestCase):
         self.write_draft(review=review)
         self.assertEqual(self.run_essay('check')[0],2)
 
-    def test_generated_templates_support_partial_then_complete_adopted_draft(self):
+    def test_skill_templates_support_partial_then_complete_adopted_draft(self):
         self.body='[전체 배포 작업 제거]\n글만 바뀌어도 전체 프로그램을 배포해야 했습니다. 문제를 확인하고 구조를 바꾼 뒤 결과를 검증했습니다. 내용 갱신과 프로그램 배포를 분리해 글 수정에 전체 배포가 필요 없어졌습니다.'
-        plan_source=(self.root/'작성템플릿/자소서_작성설계.md').read_text(encoding='utf-8')
-        draft_source=(self.root/'작성템플릿/자소서_작성본.md').read_text(encoding='utf-8')
+        templates=Path(__file__).resolve().parents[1]/'assets/templates'
+        plan_source=(templates/'자소서_작성설계.md').read_text(encoding='utf-8')
+        draft_source=(templates/'자소서_작성본.md').read_text(encoding='utf-8')
+        self.assertFalse((self.root/'작성템플릿').exists())
         profile=(self.root/'공통자료/경력_프로젝트_소재.md').read_text(encoding='utf-8')
         self.assertNotIn('- 연락처:',profile)
         self.assertNotIn('- 이메일:',profile)

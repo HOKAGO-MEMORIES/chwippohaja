@@ -61,6 +61,8 @@ class WorkspaceSetupTest(unittest.TestCase):
             self.assertFalse((root / "증빙서류" / "자격증").exists())
             self.assertFalse((root / "증빙서류" / "경력").exists())
             self.assertTrue((root / "2026 하반기").is_dir())
+            self.assertFalse((root / "작성템플릿").exists())
+            self.assertFalse(any("작성템플릿" in entry for entry in plan["create"]))
 
             config = json.loads(
                 (root / ".chwippohaja" / "workspace.json").read_text(encoding="utf-8")
@@ -332,7 +334,6 @@ class WorkspaceSetupTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / "취업"
             (root / "공통자료").mkdir(parents=True)
-            (root / "작성템플릿").mkdir()
             (root / "증빙서류").mkdir()
 
             plan = workspace_setup.setup_plan(
@@ -363,7 +364,7 @@ class WorkspaceSetupTest(unittest.TestCase):
                 "in_progress",
             )
             self.assertTrue((root / "2026 하반기").is_dir())
-            self.assertFalse((root / "작성템플릿" / "자소서_작성설계.md").exists())
+            self.assertFalse((root / "작성템플릿").exists())
             self.assertEqual(
                 workspace_setup.read_marker(root)["profile_status"], "in_progress"
             )
@@ -485,7 +486,7 @@ class WorkspaceSetupTest(unittest.TestCase):
     def test_discovery_infers_workspace_above_season_folder_without_agents(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / "취업"
-            for name in ("공통자료", "작성템플릿", "증빙서류"):
+            for name in ("공통자료", "증빙서류"):
                 (root / name).mkdir(parents=True)
             season = root / "2026 하반기"
             season.mkdir()

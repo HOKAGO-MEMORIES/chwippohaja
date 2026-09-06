@@ -31,7 +31,6 @@ WINDOWS_RESERVED_NAMES = {
 
 BASE_DIRECTORIES = (
     Path("공통자료"),
-    Path("작성템플릿"),
     Path("증빙서류"),
     Path("증빙서류") / "학력",
     Path("증빙서류") / "자격증_어학",
@@ -43,8 +42,6 @@ BASE_DIRECTORIES = (
 
 ASSET_FILES = (
     Path("공통자료") / "경력_프로젝트_소재.md",
-    Path("작성템플릿") / "자소서_작성설계.md",
-    Path("작성템플릿") / "자소서_작성본.md",
 )
 
 OPTIONAL_RULE_FILES = (
@@ -55,13 +52,11 @@ OPTIONAL_RULE_FILES = (
 RECOGNIZED_ENTRIES = (
     *OPTIONAL_RULE_FILES,
     Path("공통자료"),
-    Path("작성템플릿"),
     Path("증빙서류"),
 )
 
 WORKSPACE_CORE_DIRECTORIES = (
     Path("공통자료"),
-    Path("작성템플릿"),
     Path("증빙서류"),
 )
 

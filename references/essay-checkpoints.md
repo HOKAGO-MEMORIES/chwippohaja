@@ -32,7 +32,7 @@
 
 ## 짧은 작성 설명과 독해 검토
 
-write 문항에는 다음 형태를 사용한다. 예시는 가상 사실이며 실제 문서에는 확인된 자료로 바꾼다. 상세 판단 기준은 [주장과 문맥](essay-composition.md)의 짧은 설명, 정보 선택과 본문만으로 연결 검토를 따른다.
+write 문항에는 다음 형태를 사용한다. 예시는 가상 사실이며 실제 문서에는 확인된 자료로 바꾼다. 상세 판단 기준은 [주장과 문맥](essay-composition.md)의 짧은 설명과 내용 검토를 따른다.
 
 ```json
 "writing_brief": {
@@ -49,7 +49,7 @@ write 문항에는 다음 형태를 사용한다. 예시는 가상 사실이며 
 
 `direct_answer`는 모든 write 문항에 필요하다. 경험형(`experience_question: true`)에는 `context`, `judgment_action`, `outcome`도 필요하다. 경험형이 아닌 가치관·포부 문항에는 불필요한 과거 사건을 만들지 않고 나머지 필드를 생략할 수 있다. 개인 기준·기업 근거·계획은 해당 하위 질문별 evidence_map으로 구분한다. 보류 문항에는 완성된 설명을 강제하지 않는다.
 
-valid 답변에는 다음처럼 본문에서 읽히는 내용과 문항 적합성 근거를 기록한다. summary의 필수 필드는 writing_brief와 같다. 요약만 가능하다고 통과시키지 않는다. 행동의 목적과 앞의 문제에 답하는 결과가 본문에 연결되는지 확인한다. 설계의 의도로 빠진 맥락을 메우지 않는다.
+valid 답변의 summary 필수 필드는 writing_brief와 같다. 다음은 기록 형식의 예시다. 실제 검토 순서·근거·이슈 등급은 [주장과 문맥](essay-composition.md)을 따른다.
 
 ```json
 "reader_review": {
@@ -59,14 +59,14 @@ valid 답변에는 다음처럼 본문에서 읽히는 내용과 문항 적합�
     "judgment_action": "지원자가 내용 갱신과 프로그램 배포를 분리했다.",
     "outcome": "내용만 고칠 때 전체 프로그램을 다시 배포할 필요가 없어졌다."
   },
-  "question_fit": "개선 문항에 대해 이전의 불편, 본인의 변경과 제거된 작업을 설명한다.",
+  "question_fit": "본문의 ‘글 하나를 고쳐도 전체 프로그램을 다시 배포해야 했습니다’와 ‘내용만 고칠 때 전체 배포가 필요 없어졌습니다’가 개선 문항의 전후 작업 차이를 설명한다.",
   "issues": [
     {
       "id": "R1",
       "quote": "갱신에 38초가 걸렸습니다.",
       "problem": "이전 소요 시간이 없어 개선 효과를 알 수 없다.",
       "status": "resolved",
-      "resolution": "수치를 덜어내고 없어진 배포 작업을 명시했다. 수정 본문에서 전후 작업 차이를 확인했다."
+      "resolution": "‘내용만 고칠 때 전체 배포가 필요 없어졌습니다’로 바꿨다. 앞의 처리 경로 분리와 이어 읽어, 속도가 아니라 제거된 작업이 결과임을 확인했다."
     }
   ]
 }
@@ -166,14 +166,7 @@ python scripts/validate_essay_checkpoint.py 작성설계.md
 
 문서 수준에는 표현과 글자 수 검토 상태를 함께 기록한다.
 
-`content_checks`의 판단 기준은 다음과 같다.
-
-- `question_type_fit_verified`: 문항의 핵심 동사와 소재에서 실제로 드러나는 행동이 일치한다.
-- `material_fit_verified`: 키워드가 아니라 확인된 판단, 행동과 결과로 소재 적합성을 검토했다.
-- `judgment_action_result_connected`: 본인의 판단이 행동으로 이어지고 결과와의 인과관계가 성립한다.
-- `reader_effect_clear`: 구현 세부를 모두 알지 못해도 문제와 실제 전후 변화를 이해할 수 있다.
-- `reflection_requirement_met`: 문항이 직접 요구한 배움이나 느낀 점에 답했다.
-- `experience_meaning_present`: 사건에서 도출된 구체적인 이해가 드러난다.
+`content_checks`는 [주장과 문맥](essay-composition.md)의 내용·사실 검토 결과를 기록한다. 문항·소재 적합성은 `question_type_fit_verified`, `material_fit_verified`, 행동과 결과의 연결은 `judgment_action_result_connected`, 독자 이해는 `reader_effect_clear`, 직접 요구한 성찰과 경험의 의미는 각각 `reflection_requirement_met`, `experience_meaning_present`에 대응한다.
 
 ```json
 "style_review": {
@@ -253,13 +246,4 @@ python scripts/validate_essay_checkpoint.py 자소서.md
 
 ## 판정의 한계
 
-검사기는 소재가 실제로 적합한지, 성찰이 자연스러운지와 문장이 좋은지를 판단하지 않는다. 다음 항목은 반드시 원문과 대조해 사람이 읽는 의미 검토로 판정한다.
-
-- 문항과 소재의 직접적인 연결
-- 문항의 핵심 동사와 소재에서 실제로 드러나는 행동의 일치
-- 본인의 판단과 팀의 결과 구분
-- 사건에서 도출된 구체적인 이해
-- 사용자가 채택한 문안과 수정 이력
-- 기업과 직무 연결의 사실성
-
-검사 통과는 판정 기록의 형식이 완성됐다는 뜻이다. 거짓 판정이나 빈약한 근거를 정당화하지 않는다.
+검사기는 [주장과 문맥](essay-composition.md)의 의미 판단을 자동 수행하지 않는다. 검사 통과는 판정 기록의 형식이 완성됐다는 뜻이다. 문항 적합성·본인 역할·인과관계·경험의 의미·기업 연결은 실제 본문과 원본으로 검토해야 하며, 거짓 판정이나 빈약한 근거는 검사 통과로 정당화되지 않는다.
