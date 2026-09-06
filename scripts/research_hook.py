@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from validate_research_stage import validate_research_stage
+from application_state import sync_verified
 
 
 MARKER = Path(".chwippohaja") / "workspace.json"
@@ -154,16 +155,23 @@ def validate_targets(root: Path, state: dict[str, Any]) -> dict[str, Any]:
     for target in state["targets"]:
         application = root / target["application"]
         validation = validate_research_stage(application)
-        if validation["status"] == "complete":
+        pending_services = []
+        for service in state.get("required_services", []):
+            try:
+                verified = sync_verified(application, service)
+            except (OSError, ValueError):
+                verified = False
+            if not verified:
+                pending_services.append(service)
+        disposition = target.get("disposition")
+        if disposition in {"partial", "waiting_user"}:
+            outcome = "partial"
+        elif disposition in {"failed", "not_attempted"}:
+            outcome = disposition
+        elif validation["status"] == "complete" and not pending_services:
             outcome = "complete"
         else:
-            disposition = target.get("disposition")
-            if disposition in {"partial", "waiting_user"}:
-                outcome = "partial"
-            elif disposition in {"failed", "not_attempted"}:
-                outcome = disposition
-            else:
-                outcome = "pending"
+            outcome = "pending"
         counts[outcome] += 1
         results.append(
             {
@@ -174,6 +182,8 @@ def validate_targets(root: Path, state: dict[str, Any]) -> dict[str, Any]:
                 "attempts": target.get("attempts", []),
                 "questions": target.get("questions", []),
                 "validation": validation,
+                "local_complete": validation["status"] == "complete",
+                "pending_services": pending_services,
             }
         )
     accounted = (
@@ -291,7 +301,7 @@ def hook_command() -> int:
             item
             for item in result["targets"]
             if any(item["application"] == target["application"] for target in touched)
-            and item["outcome"] != "complete"
+            and not item["local_complete"]
             and target_has_both_documents(root, item)
         ]
         if assembled_invalid:
@@ -367,6 +377,7 @@ def start_command(args: argparse.Namespace) -> int:
         "hook_id": HOOK_ID,
         "session_id": None,
         "expected_total": expected,
+        "required_services": sorted(set(args.require_service)),
         "targets": [
             {
                 "application": application,
@@ -426,6 +437,8 @@ def resume_command(args: argparse.Namespace) -> int:
     state = load_state(root)
     if state is None:
         raise ValueError("활성 공고 조사 작업이 없습니다.")
+    if args.rebind:
+        state["session_id"] = None
     application = relative_application(root, args.application)
     target = target_for(state, application)
     target.update({"disposition": None, "reason": None, "attempts": [], "questions": []})
@@ -482,6 +495,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     start.add_argument("--workspace")
     start.add_argument("--application", action="append", required=True)
     start.add_argument("--expected-total", type=int)
+    start.add_argument("--require-service", action="append", default=[], choices=("google_drive", "notion"),
+                       help="이번 요청의 완료에 필요한 외부 반영")
     start.set_defaults(handler=start_command)
 
     defer = subparsers.add_parser("defer", help="미완료 대상의 실제 상태와 시도 기록")
@@ -496,6 +511,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     resume = subparsers.add_parser("resume", help="보류한 공고 조사 재개")
     resume.add_argument("--workspace")
     resume.add_argument("--application", required=True)
+    resume.add_argument("--rebind", action="store_true", help="새 Codex 작업의 훅 세션에 다시 연결")
     resume.set_defaults(handler=resume_command)
 
     for name, help_text, handler in (

@@ -106,6 +106,8 @@ def validate_common(checkpoint: dict[str, Any]) -> list[str]:
 
 def validate_pre_draft(checkpoint: dict[str, Any]) -> list[str]:
     errors = validate_common(checkpoint)
+    if not isinstance(checkpoint.get("questions"), list):
+        return errors
     if checkpoint.get("phase") != "pre_draft":
         errors.append("phase는 pre_draft여야 합니다.")
     status = checkpoint.get("document_status")
@@ -149,6 +151,22 @@ def validate_pre_draft(checkpoint: dict[str, Any]) -> list[str]:
                 errors.append(f"{identifier}: write에는 직접 근거가 필요합니다.")
             if missing:
                 errors.append(f"{identifier}: 미확정 정보가 있으면 write할 수 없습니다.")
+            if checkpoint.get("evidence_mapping_required"):
+                mapping = question.get("evidence_map")
+                if not isinstance(mapping, list) or not mapping:
+                    errors.append(f"{identifier}: 하위 질문별 evidence_map이 필요합니다.")
+                else:
+                    mapped = []
+                    for item in mapping:
+                        if not isinstance(item, dict) or any(
+                            not isinstance(item.get(key), str) or not item[key].strip()
+                            for key in ("subquestion", "source", "claim")
+                        ):
+                            errors.append(f"{identifier}: 근거 연결에는 하위 질문, 출처 위치와 확인된 주장이 필요합니다.")
+                            continue
+                        mapped.append(item["subquestion"])
+                    if set(mapped) != set(question.get("subquestions", [])):
+                        errors.append(f"{identifier}: 모든 하위 질문에 근거를 연결해야 합니다.")
         if action == "defer":
             if fit not in {"unsuitable", "missing"}:
                 errors.append(f"{identifier}: 적합한 소재를 근거 없이 defer할 수 없습니다.")
@@ -173,6 +191,8 @@ def validate_pre_draft(checkpoint: dict[str, Any]) -> list[str]:
 
 def validate_draft_review(checkpoint: dict[str, Any]) -> list[str]:
     errors = validate_common(checkpoint)
+    if not isinstance(checkpoint.get("questions"), list):
+        return errors
     if checkpoint.get("phase") != "draft_review":
         errors.append("phase는 draft_review여야 합니다.")
     status = checkpoint.get("document_status")
@@ -202,6 +222,8 @@ def validate_draft_review(checkpoint: dict[str, Any]) -> list[str]:
             errors.append(f"{identifier}: reflection_required는 boolean이어야 합니다.")
 
         if answer_status == "valid":
+            if question.get("answer_present") is not True:
+                errors.append(f"{identifier}: valid 문항에는 답변 본문이 있어야 합니다.")
             if fatal:
                 errors.append(f"{identifier}: 치명 이슈가 있는 답변을 valid로 판정할 수 없습니다.")
             checks = question.get("content_checks")
@@ -292,6 +314,9 @@ def validate_draft_review(checkpoint: dict[str, Any]) -> list[str]:
 
 
 def validate(checkpoint: dict[str, Any]) -> list[str]:
+    common_errors = validate_common(checkpoint)
+    if common_errors:
+        return common_errors
     phase = checkpoint.get("phase")
     if phase == "pre_draft":
         return validate_pre_draft(checkpoint)

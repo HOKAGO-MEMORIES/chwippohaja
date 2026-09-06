@@ -31,6 +31,8 @@ python scripts/research_hook.py start \
   --expected-total 2
 ```
 
+Drive나 Notion 반영까지 요청받았으면 `--require-service google_drive` 또는 `--require-service notion`을 추가한다. 요청되지 않은 연결은 넣지 않는다. 기본값은 로컬 산출물 검증이며, 외부 반영을 요구한 실행은 실제 재조회 후 `application_state.py sync` 기록까지 일치해야 완료된다.
+
 `--expected-total`은 등록한 `--application` 수와 정확히 같아야 한다. 지원 건은 워크스페이스의 활성 시즌 아래에 있어야 하며 실행 중 대상 목록을 바꿀 수 없다. 활성 실행이 이미 있으면 새 `start`로 덮어쓰지 않는다.
 
 `현재 공고 전부`나 `오늘 추가된 공고`처럼 탐색 자체가 열린 요청은 [공고와 연결 서비스](posting-and-connectors.md)의 전수 범위와 집계 기준으로 후보 탐색을 먼저 끝낸다. 사이트, 필터, 페이지 범위와 원본 수를 확정한 뒤 최종 조사 대상을 훅에 등록한다. 이 훅은 등록 전의 검색 범위가 사이트 전체였는지 스스로 증명하지 못한다.
@@ -51,7 +53,7 @@ python scripts/research_hook.py start \
 `Stop`은 활성 공고 조사 실행에 대해 다음을 확인한다.
 
 - 등록한 모든 대상이 `완료`, `부분 완료`, `실패` 또는 `미시도` 중 하나로 집계됨
-- 완료 대상은 기업별 로컬 검사기가 `complete`임
+- 완료 대상은 기업별 로컬 검사기가 `complete`이며 요청에 포함한 외부 서비스의 현재 파일 반영도 확인됨
 - 미완료 대상을 목록에서 빼거나 다른 대상으로 교체하지 않음
 - 여러 대상이거나 미완료 대상이 있을 때 최종 보고의 전체 수와 상태별 수가 실제 검사 결과와 일치함
 - 미완료 상태에서 `전체 완료`, `모두 반영` 또는 `누락 없음`이라고 주장하지 않음
@@ -89,7 +91,7 @@ python scripts/research_hook.py defer \
   --question "백엔드와 데이터 직무 중 어느 지원서를 기준으로 조사할까요?"
 ```
 
-사용자가 답하면 해당 대상만 다시 활성화한다.
+사용자 답변이나 연결 복구로 보류 사유가 해결되면 해당 대상만 다시 활성화한다. 새 Codex 작업으로 인계할 때는 `--rebind`를 추가한다.
 
 ```bash
 python scripts/research_hook.py resume \
@@ -99,7 +101,7 @@ python scripts/research_hook.py resume \
 
 ## 종료와 보고
 
-모든 대상이 로컬 검사를 통과했는지 먼저 확인한다.
+모든 대상이 로컬 검사와 요청된 외부 반영 조건을 통과했는지 먼저 확인한다. `partial` 또는 `waiting_user`로 보류한 대상은 파일이 완성돼도 자동 완료로 바뀌지 않는다. 사유를 해결한 뒤 해당 대상에 `resume`을 실행해 재검사한다.
 
 ```bash
 python scripts/research_hook.py finish --workspace "/path/to/job-workspace"

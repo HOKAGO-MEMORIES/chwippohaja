@@ -113,7 +113,7 @@ python scripts/application_workspace.py plan \
   --role "직무명"
 ```
 
-사용자가 계획을 확인하면 같은 인자로 `apply`를 실행한다. 기존 기업 폴더를 해당 지원 건으로 가져올 때만 `--adopt-existing`을 사용한다. 같은 회사와 직무의 별도 공고는 `--new-application`과 공식 `--posting-key`를 함께 사용한다.
+요청에 포함된 새 지원 건 생성은 계획을 확인한 뒤 같은 인자로 `apply`를 실행한다. 기존 구조의 가져오기 여부가 불명확한 경우에만 사용자에게 확인한다. 기존 기업 폴더를 해당 지원 건으로 가져올 때만 `--adopt-existing`을 사용한다. 같은 회사와 직무의 별도 공고는 `--new-application`과 공식 `--posting-key`를 함께 사용한다.
 
 ## 버전 규칙
 
@@ -145,10 +145,60 @@ python scripts/application_workspace.py next-draft \
 
 기존 작업이 있으면 파일명만 보고 상태를 추측하지 않는다.
 
-1. 가장 최신 번호의 작성본을 읽는다.
+1. `application_state.py status`에서 사용자가 채택한 작성본과 현재 공고 분석을 먼저 확인한다. 상태 기록이 없는 기존 지원 건만 파일과 대화에서 채택 여부를 확인한다. 가장 높은 번호를 자동으로 채택하지 않는다.
 2. 체크리스트와 `TBD`를 찾는다.
 3. `99_최종제출`에 실제 제출 파일이나 공식 접수 증빙이 있는지 확인한다.
 4. Notion의 현재 지원 단계와 파일 링크를 확인한다.
 5. 서로 다르면 실제 제출 자료와 사용자 확인을 우선하고 기록을 정정한다.
 
 완료된 산출물을 다시 만들지 않고 필요한 다음 단계부터 진행한다.
+
+## 현재 기준 파일과 독립적인 상태
+
+지원 건의 `01_공고_JD/.application-state.json`은 선택한 파일, 파일 해시, 선택 근거와 이력 및 단계별 상태를 기록한다. 기존 `.application.json`과 `workspace.json`은 그대로 사용한다. 새 상태 파일이 없는 환경도 지원한다.
+
+새로운 공고 분석이나 리서치를 검토한 뒤, 또는 사용자가 작성본을 채택한 뒤 기준 파일을 지정한다. 파일 내용은 변경하지 않는다.
+
+```bash
+python scripts/application_state.py select --application "지원 건" \
+  --kind posting_analysis --file "01_공고_JD/새_공고분석.md" --note "변경된 공식 공고를 대조한 현재 분석"
+python scripts/application_state.py select --application "지원 건" \
+  --kind essay --file "02_작성중/02_자소서.md" --note "사용자가 채택한 버전"
+python scripts/application_state.py status --application "지원 건"
+```
+
+파일 종류는 `posting_analysis`, `company_research`, `essay`, `application`이다. 사용자가 이전 버전을 채택할 때도 같은 명령으로 정확한 파일을 지정한다. 이전 선택과 파일을 보존한다. 선택 이후 파일 내용이 달라지면 다시 검토하고 재선택해야 한다. 파일을 선택했다는 사실만으로 품질 검증이나 제출 상태가 바뀌지는 않는다.
+
+조사 검사기는 지정한 현재 파일만 검사한다. 미지정 상태에서 해당 종류의 파일이 하나면 기존 방식으로 읽는다. 여러 개면 최신 번호나 날짜를 추정하지 않고 명시적인 선택을 요구한다. 과거 분석의 미확인 사항은 과거 기록으로 보존한다.
+
+### 자료 준비, 작성 검증과 실제 제출
+
+필요한 단계가 끝났을 때 확인 근거와 함께 각각 기록한다.
+
+```bash
+python scripts/application_state.py stage --application "지원 건" \
+  --stage writing --status valid_draft --evidence "현재 작성본의 문항, 사실, 역할과 형식 검증 완료"
+python scripts/application_state.py stage --application "지원 건" \
+  --stage submission --status confirmed --evidence "사용자의 실제 제출 확인과 확인일"
+```
+
+| 단계 | 상태 |
+| --- | --- |
+| materials | pending, partial, ready |
+| writing | pending, partial_draft, valid_draft, final_candidate |
+| submission | not_submitted, confirmed, evidence_saved |
+
+자료 준비와 작성 검증 기록은 당시 현재 파일 해시에 연결된다. 내용이나 선택 파일이 달라지면 상태 조회의 `effective_status`가 재검토 필요로 표시될 수 있다. 제출 상태는 역사적 사실이므로 이후 작성본 변경만으로 되돌리지 않는다. `confirmed`는 실제 제출 확인, `evidence_saved`는 공식 접수 증빙 보관까지 확인한 경우에만 기록한다. 이 명령은 외부 상태를 조회하거나 제출을 수행하지 않는다.
+
+### 외부 반영과 재검증
+
+외부 도구로 실제 메타데이터나 Notion 페이지를 재조회한 다음 그 결과를 기록한다.
+
+```bash
+python scripts/application_state.py sync --application "지원 건" \
+  --service notion --status verified --scope research --note "페이지 재조회로 현재 공고 정보와 파일 링크 확인"
+```
+
+서비스는 `google_drive` 또는 `notion`, 범위는 `research` 또는 `application`이다. 실패와 미반영은 `--status pending`과 구체적인 사유를 기록한다. `verified`는 기록 시점의 현재 파일 목록과 해시에 연결되므로 문서나 채택본이 바뀌면 다시 확인해야 한다. 기록 명령의 성공을 외부 반영 성공으로 대신하지 않는다.
+
+상태 파일에는 확인에 필요한 근거만 적고 개인 입력값, 계정 정보와 인증 응답을 복사하지 않는다. 상태 변경 명령은 같은 지원 건에서 순서대로 실행한다.

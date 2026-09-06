@@ -44,6 +44,7 @@ BASE_DIRECTORIES = (
 ASSET_FILES = (
     Path("공통자료") / "경력_프로젝트_소재.md",
     Path("작성템플릿") / "자소서_작성설계.md",
+    Path("작성템플릿") / "자소서_작성본.md",
 )
 
 OPTIONAL_RULE_FILES = (

@@ -10,6 +10,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
+SCRIPT_DIRECTORY = Path(__file__).resolve().parent
+if str(SCRIPT_DIRECTORY) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIRECTORY))
+from application_state import current
+
 
 URL_PATTERN = re.compile(r"https?://[^\s)>]+", re.IGNORECASE)
 DATE_PATTERN = re.compile(r"20\d{2}(?:[-./년]\s*\d{1,2})?")
@@ -143,7 +148,10 @@ def validate_research_stage(application: Path) -> dict[str, Any]:
             identity = json.loads(marker.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
             errors.append(f"지원 건 표식을 읽을 수 없습니다: {exc}")
-        if identity and (
+        if not isinstance(identity, dict):
+            errors.append("지원 건 표식은 JSON 객체여야 합니다.")
+            identity = {}
+        if (
             identity.get("schema_version") != 1
             or not isinstance(identity.get("company"), str)
             or not identity.get("company", "").strip()
@@ -152,8 +160,16 @@ def validate_research_stage(application: Path) -> dict[str, Any]:
         ):
             errors.append("지원 건 표식의 기업명, 직무 또는 스키마가 올바르지 않습니다.")
 
-    analyses = sorted(research_root.glob("*공고분석*.md"))
-    researches = sorted(research_root.glob("*기업리서치*.md"))
+    def selected(kind: str, pattern: str) -> list[Path]:
+        try:
+            path = current(application, kind, sorted(research_root.glob(pattern)))
+            return [path] if path else []
+        except (OSError, ValueError) as exc:
+            errors.append(str(exc))
+            return []
+
+    analyses = selected("posting_analysis", "*공고분석*.md")
+    researches = selected("company_research", "*기업리서치*.md")
     if not analyses:
         errors.append("공고 분석 문서가 없습니다.")
     if not researches:

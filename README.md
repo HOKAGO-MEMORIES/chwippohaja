@@ -34,7 +34,7 @@
 macOS와 Linux:
 
 ```bash
-git clone https://github.com/<GitHub 사용자명>/chwippohaja.git
+git clone https://github.com/HOKAGO-MEMORIES/chwippohaja.git
 mkdir -p ~/.codex/skills
 ln -s "$(pwd)/chwippohaja" ~/.codex/skills/chwippohaja
 ```
@@ -106,7 +106,7 @@ $chwippohaja로 이 공고의 자소서 문항만 확인하고 초안을 준비�
 python ~/.codex/skills/chwippohaja/scripts/install_essay_hooks.py "/path/to/job-workspace"
 ```
 
-Codex 프로젝트가 활성 시즌 같은 하위 폴더라면 `--project-root "/path/to/job-workspace/활성 시즌"`을 추가합니다. 설치 후 해당 프로젝트를 신뢰하고 Codex의 `/hooks` 화면에서 설정을 검토해 활성화합니다. 활성 자소서 작업은 작성 설계와 초안 체크포인트, 명사형 대괄호 요약, 서술식 본문과 문항별 글자 수를 통과하기 전에는 완료로 종료되지 않습니다. 사용자에게 추가 경험을 물어야 하는 경우에는 보류 이유와 질문을 기록한 대기 상태로 정상 종료할 수 있습니다. 자세한 명령과 한계는 [자소서 훅](references/essay-hooks.md)에 있습니다.
+Codex 프로젝트가 활성 시즌 같은 하위 폴더라면 `--project-root "/path/to/job-workspace/활성 시즌"`을 추가합니다. 설치 후 해당 프로젝트를 신뢰하고 Codex의 `/hooks` 화면에서 설정을 검토해 활성화합니다. 활성 자소서 작업은 등록한 전체 문항, 작성 설계와 초안 체크포인트, 문항별 형식과 분량 검사를 통과하기 전에는 완료로 종료되지 않습니다. 기본값은 명사형 대괄호 요약과 서술식 본문이며 기업 또는 사용자의 형식 요구를 `--rules`로 반영할 수 있습니다. 사용자에게 추가 경험을 물어야 하는 경우에는 보류 이유와 질문을 기록한 대기 상태로 정상 종료할 수 있습니다. 자세한 명령과 한계는 [자소서 훅](references/essay-hooks.md)에 있습니다.
 
 ### 지원서 전체
 
@@ -126,6 +126,8 @@ $chwippohaja로 채택한 지원서 작성본과 자소서 작성본을 공식 �
 
 ## 실행 환경
 
+Python 3.11 이상을 사용합니다. 도구는 Python 표준 라이브러리로 동작합니다.
+
 - 온보딩에서 생성하거나 가져온 워크스페이스
 - 개인 사실을 저장한 공통자료
 - `.chwippohaja/workspace.json`의 정보 설정 상태
@@ -143,6 +145,22 @@ Notion 사용을 선택했는데 기존 지원 관리 데이터베이스가 없�
 지원서 전체 모드에서도 산출물을 하나로 합치지 않습니다. `자소서 작성본`에는 문항과 답변을, `지원서 작성본`에는 자소서를 제외한 기본정보, 학력, 경험, 자격과 첨부 정보를 저장합니다. 두 파일은 각각 버전 관리하며 동기화된 실제 Drive URL을 Notion의 대응 링크에 연결합니다.
 
 제출이 확인되면 공식 지원 페이지의 다운로드, 인쇄와 접수증 기능을 순서대로 확인해 실제 제출 지원서 PDF를 우선 확보합니다. 운영체제의 PDF 저장 대화상자를 제어할 수 없으면 정확한 경로와 이름을 안내해 사용자가 한 번 저장하고, Codex는 생성 파일 탐색, 이름 정리, PDF 전용 페이지 검증, Drive 링크와 Notion 반영을 이어서 수행합니다. 사이트가 지원서 본문을 제공하지 않으면 접수증이나 완료 화면을 별도 증빙으로 보관합니다.
+
+## 현재 버전과 실행 상태
+
+사용자가 채택한 자소서와 지원서, 최신 공고 분석 및 리서치는 지원 건의 현재 기준 파일로 기록합니다. 파일 번호가 높다는 이유로 자동 채택하지 않습니다. 기준 파일을 바꾸거나 내용을 수정하면 해당 검증과 외부 반영을 다시 확인하며 실제 제출 이력은 별도로 유지합니다.
+
+- `application_state.py select`: 현재 분석 또는 사용자 채택본과 선택 근거 기록
+- `application_state.py status`: 자료 준비, 작성 검증, 외부 반영과 제출 상태 조회
+- `application_state.py sync`: 실제 외부 재조회 후 현재 파일의 반영 결과 기록
+- `essay_hook.py advance`: 같은 지원 건의 새 버전으로 전환하고 이전 실행 보존
+- `essay_hook.py suspend`와 `resume --run-id`: 다른 지원 건 작업 전 상태 보존과 재개
+
+기존 `start`는 다른 활성 작업을 덮어쓰지 않습니다. 새 Codex 작업으로 인계할 때는 명시적으로 `resume --rebind`를 사용합니다. 워크스페이스당 하나의 활성 자소서 실행을 사용하며 동시 편집을 자동 조정하지 않습니다.
+
+새 문서는 문항 ID가 붙은 답변 블록과 하위 질문별 근거 연결을 사용합니다. 기존 ID 없는 답변과 체크포인트는 호환 모드로 읽습니다. 기존 워크스페이스나 템플릿을 일괄 덮어쓰지 않습니다. 업데이트 뒤 새 템플릿이 필요하면 스킬의 assets에서 별도 파일로 가져옵니다.
+
+상세한 명령과 호환 기준은 [워크스페이스와 상태](references/workspace-and-state.md), [문항별 규칙](references/essay-rules.md), [자소서 훅](references/essay-hooks.md)에 있습니다.
 
 ## 개인정보
 
@@ -163,6 +181,8 @@ Notion 사용을 선택했는데 기존 지원 관리 데이터베이스가 없�
 ```bash
 python -m unittest discover -s tests -v
 ```
+
+실제 공고 조사가 끝난 지원 건에서 자소서 작성부터 검증하는 절차는 [자소서 실사용 테스트 시나리오](tests/manual/essay-drafting.md)를 따릅니다. 시나리오와 실제 실행 결과를 구분하고, 개인 자료와 대상별 결과는 공개 저장소에 보관하지 않습니다.
 
 ## 라이선스
 

@@ -19,7 +19,9 @@ CONNECTIVE_COMMA = re.compile(
     r"[가-힣A-Za-z0-9_)`]+(?:하고|했고|하며|했으며|지만|했지만|는데|했는데|면서|해서),"
 )
 SUMMARY = re.compile(r"^\[[^\[\]\n]+\]$")
-DECLARATIVE_SUMMARY_ENDING = re.compile(r"[다요][.!?]?$")
+# Only unambiguous polite endings are blocking. A noun ending in 요 (수요,
+# 필요) is not a sentence; ambiguous plain endings remain a semantic review.
+DECLARATIVE_SUMMARY_ENDING = re.compile(r"(?:습니다|ㅂ니다|합니다|입니다|됩니다|했습니다|해요|했어요|이에요|예요)[.!?]?$")
 SUMMARY_TERMINAL_PUNCTUATION = re.compile(r"[.!?]$")
 OUTLINE_LINE = re.compile(r"(?m)^[ \t]*(?:[-*+][ \t]+|\d+[.)][ \t]+)")
 STRUCTURAL_TOTALS = (
@@ -164,6 +166,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--plain", action="store_true", help="파일 전체를 하나의 본문으로 검사")
     parser.add_argument("--json", action="store_true", help="JSON 형식으로 출력")
+    parser.add_argument("--rules", type=Path, help="문항별 형식 규칙 JSON; draft_review 체크포인트가 있는 작성본에 사용")
     parser.add_argument(
         "--no-summary",
         action="store_true",
@@ -183,6 +186,22 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
         source = args.file.read_text(encoding="utf-8")
+        if args.rules:
+            if args.plain or args.no_summary:
+                raise ValueError("--rules는 --plain 또는 --no-summary와 함께 사용할 수 없습니다.")
+            from essay_rules import check_answers, load_rules
+            from validate_essay_checkpoint import load_checkpoint
+            checkpoint = load_checkpoint(source)
+            questions = checkpoint.get("questions")
+            if checkpoint.get("phase") != "draft_review" or not isinstance(questions, list) or not questions:
+                raise ValueError("--rules에는 문항이 있는 draft_review 체크포인트가 필요합니다.")
+            ids = [question["id"] for question in questions]
+            limits = [{"id": identifier, "min": 0, "max": None} for identifier in ids]
+            checked = check_answers(source, questions, limits, load_rules(args.rules, ids))
+            result = {"file": str(args.file), "structural_valid": not checked["errors"],
+                      "errors": checked["errors"], "totals": checked["style_totals"], "blocks": checked["style_blocks"]}
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 2 if args.strict and checked["errors"] else 0
         result = analyze(source, args.plain, not args.no_summary)
     except (OSError, UnicodeError, ValueError) as exc:
         print(str(exc), file=sys.stderr)

@@ -9,13 +9,13 @@ import json
 import os
 import sys
 import tempfile
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from count_essay_characters import count_blocks, extract_blocks
+from essay_rules import check_answers, load_rules, validate_rules
 from validate_essay_checkpoint import load_checkpoint, validate
-from validate_essay_style import analyze
 
 
 MARKER = Path(".chwippohaja") / "workspace.json"
@@ -58,6 +58,7 @@ def workspace_from_argument(raw: str | None) -> Path:
 
 
 def relative_target(root: Path, raw: str) -> str:
+    root = root.expanduser().resolve()
     target = Path(raw).expanduser()
     if not target.is_absolute():
         target = root / target
@@ -106,6 +107,10 @@ def load_state(root: Path) -> dict[str, Any] | None:
         maximum = item.get("max")
         if maximum is not None and not isinstance(maximum, int):
             raise ValueError("자소서 훅 최대 글자 수는 정수 또는 null이어야 합니다.")
+    for name in ("plan_file", "draft_file"):
+        if relative_target(root, data[name]) != data[name]:
+            raise ValueError("상태 파일의 대상 경로가 올바르지 않습니다.")
+    validate_rules(data.get("question_rules", {}), [item["id"] for item in limits])
     return data
 
 
@@ -146,9 +151,9 @@ def validate_checkpoint_file(path: Path, phase: str) -> tuple[dict[str, Any] | N
         return None, [f"파일이 없습니다: {path}"]
     try:
         checkpoint = load_checkpoint(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, ValueError) as exc:
+        errors = validate(checkpoint)
+    except (OSError, UnicodeError, ValueError, TypeError, KeyError) as exc:
         return None, [str(exc)]
-    errors = validate(checkpoint)
     if checkpoint.get("phase") != phase:
         errors.append(f"체크포인트 phase는 {phase}여야 합니다.")
     return checkpoint, errors
@@ -157,6 +162,8 @@ def validate_checkpoint_file(path: Path, phase: str) -> tuple[dict[str, Any] | N
 def validate_plan(root: Path, state: dict[str, Any]) -> dict[str, Any]:
     plan = root / state["plan_file"]
     checkpoint, errors = validate_checkpoint_file(plan, "pre_draft")
+    if checkpoint:
+        errors.extend(question_set_errors(checkpoint, state))
     return {
         "valid": not errors,
         "errors": [f"작성 설계: {item}" for item in errors],
@@ -178,77 +185,57 @@ def validate_run(root: Path, state: dict[str, Any]) -> dict[str, Any]:
     if draft_checkpoint and draft_checkpoint.get("document_status") not in VALID_DOCUMENT_STATUSES:
         errors.append("자소서: 저장 가능한 draft_review 상태가 아닙니다.")
 
-    counts: list[dict[str, int]] = []
-    style: dict[str, Any] | None = None
-    if draft.is_file():
-        try:
-            source = draft.read_text(encoding="utf-8")
-            blocks = extract_blocks(source)
-            if not blocks:
-                errors.append("자소서: text 코드 블록이 없습니다.")
-            else:
-                counts = count_blocks(blocks)
-                style = analyze(source, require_summary=True)
-                if not style["structural_valid"]:
-                    totals = style["totals"]
-                    errors.append(
-                        "자소서: 대괄호 요약 또는 서술식 본문 구조 검사를 통과하지 못했습니다 "
-                        f"(요약 누락 {totals['missing_summaries']}, 서술형 요약 "
-                        f"{totals['declarative_summaries']}, 문장부호 요약 "
-                        f"{totals['punctuated_summaries']}, 개조식 행 {totals['outline_lines']})."
-                    )
-        except (OSError, UnicodeError, ValueError) as exc:
-            errors.append(f"자소서: 표현 또는 글자 수 검사 실패: {exc}")
-
-    limits = state.get("character_limits", [])
-    limits_by_id = {item["id"]: item for item in limits}
-    if len(limits_by_id) != len(limits):
-        errors.append("자소서: 문항별 글자 수 제한 ID가 중복되었습니다.")
-
-    valid_questions: list[dict[str, Any]] = []
-    if pre_checkpoint and draft_checkpoint:
-        pre_ids = [item.get("id") for item in pre_checkpoint.get("questions", [])]
-        draft_ids = [item.get("id") for item in draft_checkpoint.get("questions", [])]
+    for checkpoint in (pre_checkpoint, draft_checkpoint):
+        if checkpoint:
+            errors.extend(question_set_errors(checkpoint, state))
+    if (pre_checkpoint and draft_checkpoint
+            and isinstance(pre_checkpoint.get("questions"), list)
+            and isinstance(draft_checkpoint.get("questions"), list)):
+        pre_ids = [q.get("id") for q in pre_checkpoint.get("questions", []) if isinstance(q, dict)]
+        draft_ids = [q.get("id") for q in draft_checkpoint.get("questions", []) if isinstance(q, dict)]
         if pre_ids != draft_ids:
             errors.append("작성 설계와 자소서 검토의 문항 ID 및 순서가 다릅니다.")
-        missing_limits = [identifier for identifier in pre_ids if identifier not in limits_by_id]
-        if missing_limits:
-            errors.append(
-                "자소서: 글자 수 제한이 없는 문항이 있습니다: "
-                + ", ".join(str(identifier) for identifier in missing_limits)
-            )
-        valid_questions = [
-            item
-            for item in draft_checkpoint.get("questions", [])
-            if isinstance(item, dict) and item.get("answer_status") == "valid"
-        ]
-        if len(valid_questions) != len(counts):
-            errors.append(
-                f"valid 답변 {len(valid_questions)}개와 실제 답변 블록 {len(counts)}개가 다릅니다."
-            )
-
-    if len(valid_questions) == len(counts):
-        for count, question in zip(counts, valid_questions):
-            identifier = question["id"]
-            limit = limits_by_id.get(identifier)
-            if not limit:
-                continue
-            characters = count["characters"]
-            minimum = limit["min"]
-            maximum = limit["max"]
-            if characters < minimum:
-                errors.append(f"자소서 {identifier}번: {characters}자로 최소 {minimum}자보다 짧습니다.")
-            if maximum is not None and characters > maximum:
-                errors.append(f"자소서 {identifier}번: {characters}자로 최대 {maximum}자를 초과했습니다.")
-
+    result = {"counts": [], "style_totals": None, "answers": {}}
+    if draft.is_file() and draft_checkpoint and not draft_errors:
+        try:
+            result = check_answers(draft.read_text(encoding="utf-8"),
+                                   draft_checkpoint["questions"], state["character_limits"],
+                                   state.get("question_rules", {}))
+            errors.extend(result["errors"])
+            if pre_checkpoint and not pre_errors and pre_checkpoint.get("evidence_mapping_required"):
+                for question in draft_checkpoint["questions"]:
+                    if question["answer_status"] != "valid":
+                        continue
+                    planned = next((q for q in pre_checkpoint["questions"] if q["id"] == question["id"]), {})
+                    sources = {item["source"] for item in planned.get("evidence_map", [])}
+                    links = question.get("answer_evidence", [])
+                    if not isinstance(links, list) or not links:
+                        errors.append(f"{question['id']}: 답변 구절과 출처의 연결이 필요합니다.")
+                        continue
+                    for link in links:
+                        if (not isinstance(link, dict) or not isinstance(link.get("quote"), str)
+                                or not link["quote"].strip() or link.get("source") not in sources
+                                or link["quote"] not in result["answers"].get(question["id"], "")):
+                            errors.append(f"{question['id']}: 근거 출처 또는 실제 답변 인용 구절이 일치하지 않습니다.")
+        except (OSError, UnicodeError, ValueError) as exc:
+            errors.append(f"자소서: 표현 또는 글자 수 검사 실패: {exc}")
     return {
-        "valid": not errors,
-        "errors": errors,
-        "counts": counts,
-        "style_totals": style["totals"] if style else None,
+        "valid": not errors, "errors": errors,
+        "counts": result["counts"], "style_totals": result["style_totals"],
         "plan_digest": digest(plan) if plan.is_file() else None,
         "draft_digest": digest(draft) if draft.is_file() else None,
     }
+
+
+def question_set_errors(checkpoint: dict[str, Any], state: dict[str, Any]) -> list[str]:
+    questions = checkpoint.get("questions", [])
+    if not isinstance(questions, list):
+        return ["문항 목록은 배열이어야 합니다."]
+    ids = [q.get("id") for q in questions if isinstance(q, dict) and isinstance(q.get("id"), str)]
+    registered = [item["id"] for item in state["character_limits"]]
+    if len(registered) != len(set(registered)) or set(ids) != set(registered):
+        return ["등록 문항 ID와 체크포인트 문항 ID가 중복 없이 정확히 일치해야 합니다."]
+    return []
 
 
 def validate_ready_run(root: Path, state: dict[str, Any]) -> dict[str, Any]:
@@ -391,16 +378,24 @@ def hook_command() -> int:
     return 0
 
 
-def start_command(args: argparse.Namespace) -> int:
-    root = workspace_from_argument(args.workspace)
-    state = {
+def new_state(root: Path, args: argparse.Namespace) -> dict[str, Any]:
+    plan = relative_target(root, args.plan)
+    draft = relative_target(root, args.draft)
+    if plan == draft or Path(plan).parent != Path(draft).parent:
+        raise ValueError("작성 설계와 답변은 같은 지원 건의 서로 다른 파일이어야 합니다.")
+    ids = [item["id"] for item in args.limit]
+    if len(ids) != len(set(ids)):
+        raise ValueError("문항별 글자 수 제한 ID가 중복되었습니다.")
+    return {
         "schema_version": 1,
         "hook_id": HOOK_ID,
+        "run_id": uuid.uuid4().hex,
+        "question_rules": load_rules(args.rules, ids),
         "status": "active",
         "phase": "planning",
         "session_id": None,
-        "plan_file": relative_target(root, args.plan),
-        "draft_file": relative_target(root, args.draft),
+        "plan_file": plan,
+        "draft_file": draft,
         "character_limits": args.limit,
         "waiting_reason": None,
         "follow_up_questions": [],
@@ -411,8 +406,65 @@ def start_command(args: argparse.Namespace) -> int:
         "last_plan_validation": None,
         "last_validation": None,
     }
-    write_json_atomic(state_path(root), state)
-    print(json.dumps(state, ensure_ascii=False, indent=2))
+
+
+def create_state(root: Path, state: dict[str, Any]) -> None:
+    path = state_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # Exclusive creation also prevents two concurrent starts from replacing each other.
+    with path.open("x", encoding="utf-8") as output:
+        json.dump(state, output, ensure_ascii=False, indent=2)
+        output.write("\n")
+
+
+def archive_state(root: Path, state: dict[str, Any], status: str) -> str:
+    identifier = state.get("run_id") or uuid.uuid4().hex
+    state["run_id"] = identifier
+    snapshot = {**state, "archived_status": status, "archived_at": now_iso()}
+    write_json_atomic(root / STATE.parent / "essay-history" / f"{identifier}.json", snapshot)
+    return identifier
+
+
+def start_command(args: argparse.Namespace) -> int:
+    root = workspace_from_argument(args.workspace)
+    proposed = new_state(root, args)
+    previous = load_state(root)
+    if previous:
+        keys = ("plan_file", "draft_file", "character_limits", "question_rules")
+        if all(previous.get(key, {}) == proposed[key] for key in keys):
+            print(json.dumps(previous, ensure_ascii=False, indent=2))
+            return 0
+        raise ValueError("활성 자소서 작업이 있습니다. 같은 지원 건의 새 버전은 advance, 다른 지원 건은 suspend 후 start를 사용하세요.")
+    create_state(root, proposed)
+    print(json.dumps(proposed, ensure_ascii=False, indent=2))
+    return 0
+
+
+def advance_command(args: argparse.Namespace) -> int:
+    root = workspace_from_argument(args.workspace)
+    previous = load_state(root)
+    if not previous:
+        raise ValueError("활성 자소서 작업이 없습니다.")
+    proposed = new_state(root, args)
+    if Path(previous["draft_file"]).parent != Path(proposed["draft_file"]).parent:
+        raise ValueError("advance는 같은 지원 건의 새 버전에만 사용합니다.")
+    if previous["draft_file"] == proposed["draft_file"]:
+        raise ValueError("새 버전에는 다른 답변 파일을 지정하세요.")
+    proposed["session_id"] = previous.get("session_id")
+    proposed["previous_run_id"] = archive_state(root, previous, "advanced")
+    write_json_atomic(state_path(root), proposed)
+    print(json.dumps(proposed, ensure_ascii=False, indent=2))
+    return 0
+
+
+def suspend_command(args: argparse.Namespace) -> int:
+    root = workspace_from_argument(args.workspace)
+    state = load_state(root)
+    if not state:
+        raise ValueError("활성 자소서 작업이 없습니다.")
+    identifier = archive_state(root, state, "suspended")
+    state_path(root).unlink()
+    print(json.dumps({"suspended": True, "run_id": identifier}, ensure_ascii=False))
     return 0
 
 
@@ -434,8 +486,21 @@ def wait_command(args: argparse.Namespace) -> int:
 def resume_command(args: argparse.Namespace) -> int:
     root = workspace_from_argument(args.workspace)
     state = load_state(root)
+    if args.run_id:
+        if state:
+            raise ValueError("활성 작업을 종료하거나 suspend한 뒤 보관된 작업을 재개하세요.")
+        if len(args.run_id) != 32 or any(c not in "0123456789abcdef" for c in args.run_id):
+            raise ValueError("run_id가 올바르지 않습니다.")
+        archived = root / STATE.parent / "essay-history" / f"{args.run_id}.json"
+        state = json.loads(archived.read_text(encoding="utf-8"))
+        if state.get("archived_status") != "suspended":
+            raise ValueError("suspend한 실행만 재개할 수 있습니다.")
+        create_state(root, state)
+        state = load_state(root)
     if state is None:
         raise ValueError("활성 자소서 작업이 없습니다.")
+    if args.rebind:
+        state["session_id"] = None
     state["status"] = "active"
     state["waiting_reason"] = None
     state["follow_up_questions"] = []
@@ -468,6 +533,8 @@ def finish_command(args: argparse.Namespace) -> int:
     if not result["valid"]:
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 2
+    state["last_validation"] = result
+    archive_state(root, state, "finished")
     state_path(root).unlink()
     print(json.dumps({"finished": True, "draft_file": state["draft_file"]}, ensure_ascii=False))
     return 0
@@ -515,7 +582,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         required=True,
         help="문항별 공백 포함 ID:MIN:MAX 글자 수. 최대값이 없으면 ID:MIN:",
     )
+    start.add_argument("--rules", type=Path, help="문항 ID별 형식과 계산 규칙 JSON")
     start.set_defaults(handler=start_command)
+
+    advance = subparsers.add_parser("advance", help="기존 실행을 보존하고 같은 지원 건의 새 버전으로 전환")
+    advance.add_argument("--workspace")
+    advance.add_argument("--plan", required=True)
+    advance.add_argument("--draft", required=True)
+    advance.add_argument("--limit", type=parse_limit, action="append", required=True)
+    advance.add_argument("--rules", type=Path)
+    advance.set_defaults(handler=advance_command)
+    suspend = subparsers.add_parser("suspend", help="실행 상태를 보존하고 다른 지원 건 작업을 허용")
+    suspend.add_argument("--workspace")
+    suspend.set_defaults(handler=suspend_command)
 
     wait = subparsers.add_parser("wait", help="사용자 사실을 기다리는 정상 중단 상태")
     wait.add_argument("--workspace")
@@ -535,6 +614,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     ):
         command = subparsers.add_parser(name, help=help_text)
         command.add_argument("--workspace")
+        if name == "resume":
+            command.add_argument("--run-id", help="suspend가 반환한 실행 ID")
+            command.add_argument("--rebind", action="store_true", help="새 Codex 작업에서 다음 훅 세션에 다시 연결")
         command.set_defaults(handler=handler)
 
     hook = subparsers.add_parser("hook", help="Codex hooks.json에서 호출")

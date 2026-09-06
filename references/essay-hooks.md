@@ -1,6 +1,6 @@
 # 자소서 훅
 
-자소서 작성 지침을 읽었다는 선언만으로 작업이 끝나지 않도록 Codex의 `PostToolUse`와 `Stop` 훅을 사용한다. 훅은 의미 판단을 대신하지 않는다. 작성자가 남긴 문항별 판정과 근거가 기계 판독 가능한지, 실제 저장본이 그 판정과 구조 및 글자 수 조건을 충족하는지를 종료 직전에 다시 확인한다.
+자소서 작성 지침을 읽었다는 선언만으로 작업이 끝나지 않도록 Codex의 `PostToolUse`와 `Stop` 훅을 사용한다. 훅은 의미 판단을 대신하지 않는다. 작성자가 남긴 문항별 판정과 근거가 기계 판독 가능한지, 실제 저장본이 그 판정과 등록한 형식 및 분량 조건을 충족하는지를 종료 직전에 다시 확인한다.
 
 ## 설치 범위
 
@@ -34,9 +34,9 @@ python scripts/essay_hook.py start \
   --limit "2:1200:1500"
 ```
 
-`--limit`은 `문항ID:최소:최대` 형식이며 공백 포함 기준이다. 기업이 최소 글자 수를 정하지 않았다면 최소값을 `0`으로 둔다. 모든 문항을 등록하되 부분 초안에서 `deferred`인 문항은 실제 `text` 답변 블록 수에 포함하지 않는다.
+`--limit`은 `문항ID:최소:최대` 형식이다. 기본값은 공백 포함 문자 수이며, 기업별 형식이나 계산 기준이 다르면 [문항별 규칙](essay-rules.md)에 따라 `--rules "규칙 JSON"`을 함께 전달한다. 기업이 최소 글자 수를 정하지 않았다면 최소값을 `0`으로 둔다. 모든 문항을 등록하되 부분 초안에서 `deferred`인 문항은 실제 `text` 답변 블록 수에 포함하지 않는다.
 
-실행 상태는 `.chwippohaja/runs/essay-current.json`에 저장한다. 세션 ID는 첫 훅 호출 때 자동으로 결합되며 다른 Codex 작업의 훅 호출에는 반응하지 않는다. 새 자소서 버전을 만들 때는 `start`를 다시 실행해 새 대상 파일로 바꾼다.
+실행 상태는 `.chwippohaja/runs/essay-current.json`에 저장한다. 세션 ID는 첫 훅 호출 때 자동으로 결합되며 다른 Codex 작업의 훅 호출에는 반응하지 않는다. 활성 실행이 있으면 다른 대상의 `start`는 거절한다. 같은 경로와 조건의 재호출은 기존 상태를 보존한다. 새 버전과 작업 전환은 아래 명시적인 명령을 사용한다.
 
 작성 설계의 `pre_draft` 체크포인트를 먼저 만든 뒤 별도 쓰기에서 훅이 통과 결과를 확인하게 한다. 훅 호출이 없는 도구로 작성했다면 다음 명령을 직접 실행한다.
 
@@ -55,11 +55,11 @@ python scripts/essay_hook.py plan-check --workspace "/path/to/job-workspace"
 - 작성 설계의 `pre_draft` 체크포인트
 - 답변 본문보다 먼저 작성 설계가 통과했다는 기록과 설계 파일 해시
 - 자소서의 `draft_review` 체크포인트
-- 두 체크포인트의 문항 ID와 순서 일치
+- 등록한 전체 문항 ID와 두 체크포인트의 문항 ID가 중복 없이 정확히 일치함
+- 두 체크포인트의 문항 순서 일치와 태그가 있는 답변 블록의 ID 대응
 - `valid` 문항 수와 실제 `text` 답변 블록 수 일치
-- 각 답변 첫 줄의 명사형 대괄호 요약
-- 기업이 별도 형식을 요구하지 않은 본문의 서술식 구조
-- 문항별 최소 및 최대 글자 수
+- 등록한 문항별 소제목과 본문 형식
+- 등록한 계산 기준에 따른 문항별 최소 및 최대 분량
 - 저장 가능한 `valid_draft`, `partial_draft` 또는 `final_candidate` 상태
 
 다음 명령으로 훅을 기다리지 않고 같은 검사를 실행할 수 있다.
@@ -91,7 +91,7 @@ python scripts/essay_hook.py resume --workspace "/path/to/job-workspace"
 
 ## 실행 종료
 
-최신 작성본이 모든 기계 검사를 통과한 뒤에만 실행 상태를 제거한다.
+검사 중인 작성본이 모든 기계 검사를 통과하면 실행 기록을 `essay-history`에 보관하고 활성 상태를 제거한다. 사용자 채택본은 별도로 `application_state.py select --kind essay`로 기록하며 자동 채택하지 않는다.
 
 ```bash
 python scripts/essay_hook.py finish --workspace "/path/to/job-workspace"
@@ -102,6 +102,30 @@ python scripts/essay_hook.py finish --workspace "/path/to/job-workspace"
 ```bash
 python scripts/essay_hook.py status --workspace "/path/to/job-workspace"
 ```
+
+## 버전 전환과 작업 재개
+
+같은 회사의 다음 버전은 기존 실행을 보관하고 새 경로를 지정한다. 기존 조건과 같은 경우에도 전체 문항 제한과 규칙 파일을 전달한다.
+
+```bash
+python scripts/essay_hook.py advance --workspace "워크스페이스" \
+  --plan "시즌/회사/02_작성중/03_설계.md" \
+  --draft "시즌/회사/02_작성중/04_답변.md" --limit "1:0:1500"
+```
+
+새 버전은 작성 설계 검증부터 다시 시작한다. 다른 지원 건에는 `advance`를 사용할 수 없다. 다른 회사 작업으로 옮기거나 현재 버전의 등록 조건을 고쳐야 하면 먼저 실행 상태를 보존한다.
+
+```bash
+python scripts/essay_hook.py suspend --workspace "워크스페이스"
+```
+
+반환된 `run_id`를 기록한다. 기존 작성 파일과 실행 상태는 보존되며 완료로 처리하지 않는다. 다른 실행이 활성 상태가 아닐 때 보관한 작업을 재개할 수 있다.
+
+```bash
+python scripts/essay_hook.py resume --workspace "워크스페이스" --run-id "반환된 실행 ID" --rebind
+```
+
+`--rebind`는 새 Codex 작업에서 기존 실행을 명시적으로 인계할 때만 사용한다. 같은 작업의 사용자 응답 후에는 일반 `resume`을 사용한다. 워크스페이스당 하나의 자소서 실행을 활성화하는 방식이며 여러 작업의 동시 편집을 조정하는 시스템은 아니다.
 
 ## 한계
 
