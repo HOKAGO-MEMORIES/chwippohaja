@@ -13,6 +13,13 @@ from typing import Any
 
 URL_PATTERN = re.compile(r"https?://[^\s)>]+", re.IGNORECASE)
 DATE_PATTERN = re.compile(r"20\d{2}(?:[-./년]\s*\d{1,2})?")
+HEADING_PATTERN = re.compile(r"(?m)^#{1,6}\s+\S+")
+MARKDOWN_NOISE = re.compile(r"[`#>*_\-|\[\]()]|https?://\S+", re.IGNORECASE)
+PLACEHOLDER_PATTERN = re.compile(
+    r"\bTBD\b|준비\s*중|미등록|내용\s*없음|자료\s*없음|확인\s*불가",
+    re.IGNORECASE,
+)
+ROLE_SEPARATOR_PATTERN = re.compile(r"[\s/·._-]+")
 SOURCE_SUFFIXES = {
     ".pdf",
     ".png",
@@ -47,11 +54,28 @@ def contains_any(text: str, candidates: tuple[str, ...]) -> bool:
     return any(candidate.casefold() in lowered for candidate in candidates)
 
 
+def contains_role(text: str, role: str) -> bool:
+    normalized_text = ROLE_SEPARATOR_PATTERN.sub("", text).casefold()
+    normalized_role = ROLE_SEPARATOR_PATTERN.sub("", role).casefold()
+    if normalized_role and normalized_role in normalized_text:
+        return True
+    tokens = [
+        token.casefold()
+        for token in ROLE_SEPARATOR_PATTERN.split(role)
+        if len(token.strip()) >= 2
+    ]
+    return bool(tokens) and any(token in text.casefold() for token in tokens)
+
+
 def validate_document(
     path: Path,
     *,
     company: str,
     keyword_groups: tuple[tuple[str, ...], ...],
+    minimum_characters: int,
+    minimum_headings: int,
+    minimum_urls: int,
+    role: str | None,
     errors: list[str],
 ) -> None:
     text = read_text(path, errors)
@@ -59,10 +83,25 @@ def validate_document(
         return
     if company.casefold() not in text.casefold():
         errors.append(f"기업명이 없습니다: {path.name}")
-    if not URL_PATTERN.search(text):
-        errors.append(f"출처 URL이 없습니다: {path.name}")
+    urls = URL_PATTERN.findall(text)
+    if len(set(urls)) < minimum_urls:
+        errors.append(f"출처 URL이 {minimum_urls}개보다 적습니다: {path.name}")
     if not DATE_PATTERN.search(text):
         errors.append(f"확인일 또는 기준일이 없습니다: {path.name}")
+    if role and not contains_role(text, role):
+        errors.append(f"지원 직무가 없습니다: {path.name}: {role}")
+    headings = HEADING_PATTERN.findall(text)
+    if len(headings) < minimum_headings:
+        errors.append(f"의미 있는 구역이 {minimum_headings}개보다 적습니다: {path.name}")
+    substantive = MARKDOWN_NOISE.sub("", text)
+    substantive = PLACEHOLDER_PATTERN.sub("", substantive)
+    substantive = re.sub(r"\s+", "", substantive)
+    if len(substantive) < minimum_characters:
+        errors.append(
+            f"실질 내용이 부족합니다: {path.name}: {len(substantive)}/{minimum_characters}자"
+        )
+    if len(PLACEHOLDER_PATTERN.findall(text)) >= 3:
+        errors.append(f"미확인 상태 문구가 반복됩니다: {path.name}")
     for candidates in keyword_groups:
         if not contains_any(text, candidates):
             errors.append(
@@ -121,6 +160,7 @@ def validate_research_stage(application: Path) -> dict[str, Any]:
         errors.append("기업 리서치 문서가 없습니다.")
 
     company = str(identity.get("company") or application.name).strip()
+    role = str(identity.get("role") or "").strip()
     for path in analyses:
         validate_document(
             path,
@@ -129,7 +169,12 @@ def validate_research_stage(application: Path) -> dict[str, Any]:
                 ("주요 업무", "담당 업무", "수행 업무"),
                 ("자격요건", "지원 자격", "지원 조건", "필수 요건"),
                 ("전형", "첨부", "제출"),
+                ("마감", "접수 기간", "모집 기간"),
             ),
+            minimum_characters=220,
+            minimum_headings=4,
+            minimum_urls=1,
+            role=role,
             errors=errors,
         )
     for path in researches:
@@ -138,9 +183,15 @@ def validate_research_stage(application: Path) -> dict[str, Any]:
             company=company,
             keyword_groups=(
                 ("사업", "서비스", "제품"),
+                ("인재상", "핵심 가치", "조직 문화", "일하는 방식"),
+                ("최근", "동향", "계획", "전환", "전략"),
                 ("직무", "지원자", "지원 관점"),
                 ("출처", "참고 자료"),
             ),
+            minimum_characters=320,
+            minimum_headings=5,
+            minimum_urls=2,
+            role=role,
             errors=errors,
         )
 
