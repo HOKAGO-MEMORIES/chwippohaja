@@ -278,7 +278,7 @@ def serialized_tool_input(payload: dict[str, Any]) -> str:
 
 
 def touched_file(target: str, payload: dict[str, Any]) -> bool:
-    serialized = serialized_tool_input(payload).replace("\\", "/")
+    serialized = serialized_tool_input(payload).replace("\\\\", "/").replace("\\", "/")
     return target in serialized or Path(target).name in serialized
 
 

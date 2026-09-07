@@ -209,9 +209,9 @@ def target_has_both_documents(root: Path, target: dict[str, Any]) -> bool:
 
 def serialized_tool_input(payload: dict[str, Any]) -> str:
     try:
-        return json.dumps(payload.get("tool_input", {}), ensure_ascii=False).replace("\\", "/")
+        return json.dumps(payload.get("tool_input", {}), ensure_ascii=False).replace("\\\\", "/").replace("\\", "/")
     except (TypeError, ValueError):
-        return str(payload.get("tool_input", "")).replace("\\", "/")
+        return str(payload.get("tool_input", "")).replace("\\\\", "/").replace("\\", "/")
 
 
 def touched_targets(state: dict[str, Any], payload: dict[str, Any]) -> list[dict[str, Any]]:

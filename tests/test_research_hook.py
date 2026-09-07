@@ -291,18 +291,22 @@ class ResearchHookTests(unittest.TestCase):
             encoding="utf-8",
         )
         self.assertEqual(self.start(application).returncode, 0)
-        result = self.run_script(
-            "hook",
-            input_value={
-                "event": "PostToolUse",
-                "session_id": "session-a",
-                "cwd": str(self.season),
-                "tool_input": {"path": str(target)},
-            },
-        )
-        response = json.loads(result.stdout)
-        self.assertEqual(response["decision"], "block")
-        self.assertIn("완료 기준", response["reason"])
+        # A decoded Windows path becomes doubled backslashes in serialized JSON.
+        # Exercise both formats on every OS, not only on Windows CI.
+        for target_path in (target.as_posix(), target.as_posix().replace("/", "\\")):
+            with self.subTest(path=target_path):
+                result = self.run_script(
+                    "hook",
+                    input_value={
+                        "event": "PostToolUse",
+                        "session_id": "session-a",
+                        "cwd": str(self.season),
+                        "tool_input": {"path": target_path},
+                    },
+                )
+                response = json.loads(result.stdout)
+                self.assertEqual(response["decision"], "block")
+                self.assertIn("완료 기준", response["reason"])
 
     def test_expected_total_must_match_fixed_target_list(self) -> None:
         application = self.create_application("예시전자")
