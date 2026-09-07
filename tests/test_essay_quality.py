@@ -156,7 +156,7 @@ class EssayQualityContractTest(unittest.TestCase):
             del review['questions'][0]['reader_review']
             path.write_text(checkpoint(review), encoding='utf-8')
             result = subprocess.run([sys.executable,str(Path(essay_hook.__file__).with_name('validate_essay_checkpoint.py')),
-                                     '--json',str(path)],capture_output=True,text=True)
+                                     '--json',str(path)],capture_output=True,encoding="utf-8")
             self.assertEqual(result.returncode, 2)
             self.assertFalse(json.loads(result.stdout)['valid'])
 

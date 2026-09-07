@@ -45,7 +45,7 @@ class ResearchHookTests(unittest.TestCase):
         return subprocess.run(
             [sys.executable, str(SCRIPT), *args],
             input=json.dumps(input_value, ensure_ascii=False) if input_value else None,
-            text=True,
+            encoding="utf-8",
             capture_output=True,
             env=environment,
             check=False,
@@ -351,7 +351,7 @@ class ResearchHookTests(unittest.TestCase):
                     "--project-root",
                     str(self.season),
                 ],
-                text=True,
+                encoding="utf-8",
                 capture_output=True,
                 env=environment,
                 check=False,
