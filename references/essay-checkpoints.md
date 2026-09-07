@@ -72,7 +72,13 @@ valid 답변의 summary 필수 필드는 writing_brief와 같다. 다음은 기�
 }
 ```
 
-issues는 핵심 답·본인 기여·인과관계의 이해를 막는 실제 문제만 담는다. 없는 이슈를 만들지 않으며 발견되지 않으면 빈 배열로 둔다. `quote`에는 문제가 있었던 실제 본문 구절을 남긴다. 해결된 구절은 수정 전 인용이므로 최신 본문에 그대로 남을 필요는 없다. `resolution`에는 실제 변경과 다시 읽은 결과를 기록하고 revision의 `issue_ids`, `resolved_issues`에 같은 ID를 연결한다. 미해결은 `status: open`으로 남기고 해당 문항을 needs_revision으로 처리한다. open이 남은 valid 답변은 거절된다. 취향 수준의 변경은 기존 recommended_issues와 수정 기록에서 처리한다.
+이슈 등급과 완료 기준은 [주장과 문맥](essay-composition.md)의 판정 절을 따른다. 새 필드 없이 다음처럼 기록한다.
+
+- `reader_review.issues`: 상세 검토가 필요한 실제 문제의 구절·이유·해결과 재독 결과. 미해결 치명 문제는 `status: open`과 `fatal_issues`에 같은 R번호로 연결하고 문항을 `needs_revision`으로 둔다. open이 남은 valid 답변은 거절된다.
+- `recommended_issues`: 남은 권장 문제의 R번호·실제 구절·부족한 이유·다음 조치를 기존 문자열 배열에 기록한다. 치명 문제가 없는 초안에는 남을 수 있지만 최종 후보 전 보완한다. 권장 문제만으로 `needs_revision`을 사용하지 않는다.
+- `revision.changes`, `remaining_issues`: 적용한 선택 사항과 미결정 선택도 문제와 구분해 기록한다. 취향을 권장 문제로 분류하거나 선택지를 일부러 만들지 않는다.
+
+없는 이슈를 만들지 않으며 발견되지 않으면 빈 배열로 둔다. `quote`에는 수정 전 실제 구절을 남길 수 있고 `resolution`에는 실제 변경과 재독 결과를 적는다. 해결한 문제는 revision의 `issue_ids`, `resolved_issues`에도 같은 ID로 연결한다. 과거 해결 기록을 현재 검토의 증거로 복사하지 않는다.
 
 이 검사는 설명·검토 기록이 비어 있거나 서로 모순되는 상태를 거절한다. 문장이 존재한다는 이유만으로 그 설명의 사실성이나 설득력을 자동 인정하지 않는다.
 
@@ -197,11 +203,11 @@ python scripts/validate_essay_checkpoint.py 작성설계.md
 
 문서 상태는 다음과 같다.
 
-- 모든 문항이 `valid`: `valid_draft`
+- 모든 문항이 기본 요건을 충족해 `valid`: `valid_draft` (사용자 채택 전 초안이며 남은 권장 문제·선택은 별도 기록)
 - `valid`와 `deferred`가 함께 있음: `partial_draft`
 - 하나라도 `needs_revision`: `needs_revision`
 - 모두 `deferred`: `blocked`
-- 모든 문항이 `valid`이고 최종 표현과 제출 형식까지 검증함: `final_candidate`
+- 모든 문항이 `valid`이고 권장 문제 처리 및 최종 표현·제출 형식 검토까지 마침: `final_candidate` (기계 검사만으로 승격하지 않음)
 
 `needs_revision`은 저장할 결과가 아니라 자동 수정과 재검사의 입력이다. 오류를 수정할 수 없고 새로운 사용자 사실이 필요하면 해당 문항을 `deferred`로 바꾸고 이유와 질문을 기록한다. `needs_revision`과 모든 문항이 보류된 `blocked`는 검사 실패로 반환한다.
 
