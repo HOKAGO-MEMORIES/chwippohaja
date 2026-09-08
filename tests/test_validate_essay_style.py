@@ -41,6 +41,36 @@ Java·Spring으로 Read Model을 설계했고, OOM이 없음을 확인했습니�
         ]
         self.assertEqual(tokens, ["Java", "Spring", "Read", "Model", "OOM"])
 
+    def test_quote_candidates_only_cover_answer_blocks(self) -> None:
+        source = """문항 원문 ‘인용’\n```text question=1\n[요약]\n‘서비스’를 '개선'했습니다.\n```\n```json\n{"note": "‘원본’"}\n```\n"""
+        result = validator.analyze(source)
+        self.assertEqual(result["totals"]["curly_single_quotes"], 2)
+        found = result["blocks"][0]["curly_single_quotes"]
+        self.assertEqual([(x["value"], x["line"], x["column"]) for x in found],
+                         [("‘", 2, 1), ("’", 2, 5)])
+        revised = source.replace("‘서비스’", "'서비스'")
+        self.assertEqual(validator.analyze(revised)["totals"]["curly_single_quotes"], 0)
+
+    def test_quote_candidates_in_plain_and_rules_modes(self) -> None:
+        from essay_rules import check_answers
+        body = "[요약]\n‘서비스’를 확인했습니다."
+        self.assertEqual(validator.analyze(body, plain=True)["totals"]["curly_single_quotes"], 2)
+        checked = check_answers("```text question=1\n" + body + "\n```\n",
+                                [{"id": "1", "answer_status": "valid"}],
+                                [{"id": "1", "min": 0, "max": None}], {})
+        self.assertEqual(checked["style_totals"]["curly_single_quotes"], 2)
+
+    def test_cli_prints_quote_locations(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "자소서.md"
+            path.write_text("```text\n[요약]\n‘서비스’를 확인했습니다.\n```\n", encoding="utf-8")
+            completed = subprocess.run([sys.executable, str(SCRIPT), str(path)],
+                                       capture_output=True, encoding="utf-8")
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn("curly_single_quotes=2", completed.stdout)
+            self.assertIn("curly_single_quotes line 2 column 1: ‘", completed.stdout)
+            self.assertIn("curly_single_quotes line 2 column 5: ’", completed.stdout)
+
     def test_reports_missing_summary(self) -> None:
         source = "```text\n바로 본문을 시작합니다.\n```\n"
         result = validator.analyze(source)

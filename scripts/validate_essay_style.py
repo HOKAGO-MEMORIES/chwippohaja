@@ -14,6 +14,7 @@ from count_essay_characters import extract_blocks
 
 
 MIDDOT = "·"
+CURLY_SINGLE_QUOTE = re.compile(r"[‘’]")
 ENGLISH_TOKEN = re.compile(r"(?<![A-Za-z0-9_])[A-Za-z][A-Za-z0-9_.+#/-]*(?![A-Za-z0-9_])")
 CONNECTIVE_COMMA = re.compile(
     r"[가-힣A-Za-z0-9_)`]+(?:하고|했고|하며|했으며|지만|했지만|는데|했는데|면서|해서),"
@@ -102,6 +103,7 @@ def analyze_block(content: str, index: int, require_summary: bool) -> dict[str, 
     return {
         "block": index,
         "middots": middots,
+        "curly_single_quotes": occurrences(content, CURLY_SINGLE_QUOTE),
         "english_candidates": english,
         "connective_commas": occurrences(content, CONNECTIVE_COMMA),
         "outline_lines": outline_lines,
@@ -138,6 +140,7 @@ def analyze(source: str, plain: bool = False, require_summary: bool = True) -> d
         "totals": {
             "blocks": len(results),
             "middots": sum(len(item["middots"]) for item in results),
+            "curly_single_quotes": sum(len(item["curly_single_quotes"]) for item in results),
             "english_candidates": sum(
                 len(item["english_candidates"]) for item in results
             ),
@@ -213,7 +216,8 @@ def main(argv: list[str] | None = None) -> int:
     else:
         totals = result["totals"]
         print(
-            "blocks={blocks} middots={middots} english_candidates={english_candidates} "
+            "blocks={blocks} middots={middots} curly_single_quotes={curly_single_quotes} "
+            "english_candidates={english_candidates} "
             "connective_commas={connective_commas} missing_summaries={missing_summaries} "
             "declarative_summaries={declarative_summaries} "
             "punctuated_summaries={punctuated_summaries} outline_lines={outline_lines} "
@@ -224,6 +228,7 @@ def main(argv: list[str] | None = None) -> int:
         for block in result["blocks"]:
             for name in (
                 "middots",
+                "curly_single_quotes",
                 "english_candidates",
                 "connective_commas",
                 "outline_lines",
