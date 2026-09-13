@@ -205,3 +205,10 @@ python scripts/application_state.py sync --application "지원 건" \
 서비스는 `google_drive` 또는 `notion`, 범위는 `research` 또는 `application`이다. 실패와 미반영은 `--status pending`과 구체적인 사유를 기록한다. `verified`는 기록 시점의 현재 파일 목록과 해시에 연결되므로 문서나 채택본이 바뀌면 다시 확인해야 한다. 기록 명령의 성공을 외부 반영 성공으로 대신하지 않는다.
 
 상태 파일에는 확인에 필요한 근거만 적고 개인 입력값, 계정 정보와 인증 응답을 복사하지 않는다. 상태 변경 명령은 같은 지원 건에서 순서대로 실행한다.
+
+
+### 제출 이후의 전형과 수동 관리
+
+Notion의 전형 상태·다음 일정·전형 이력을 현재 진행 정보로 사용한다. 로컬 submission은 실제 제출 사실만 보존하며, 별도 필기·면접 상태를 같은 필드에 넣지 않는다. 사용자가 Notion에서 직접 갱신한 값을 로컬 기록으로 덮어쓰지 않는다. [전형 관리](recruitment-progress.md)의 갱신 절차를 따른다.
+
+연결 대기 재개에서는 [제출과 최종 점검](submission-and-checklist.md)의 절차로 외부 파일과 페이지를 재조회한다. pending 기록만 보고 자료를 다시 만들거나 전체 제출 과정을 반복하지 않는다.
