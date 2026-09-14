@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from count_essay_characters import answer_blocks, count_blocks, measure
+from count_essay_characters import COUNT_UNITS, answer_blocks, count_blocks, measure
 from validate_essay_style import analyze, SUMMARY
 
 
@@ -12,7 +12,7 @@ DEFAULT = {"summary": "required", "body": "prose", "unit": "characters",
            "whitespace": "include", "line_endings": "lf"}
 CHOICES = {"summary": {"required", "optional", "forbidden"},
            "body": {"prose", "list", "any"},
-           "unit": {"characters", "utf8_bytes", "utf16_units"},
+           "unit": set(COUNT_UNITS),
            "whitespace": {"include", "exclude"},
            "line_endings": {"lf", "crlf", "remove"}}
 

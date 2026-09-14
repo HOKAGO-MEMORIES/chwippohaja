@@ -84,6 +84,20 @@ class WorkflowRegressions(unittest.TestCase):
         self.assertTrue(analyze('[고객의 수요]\n본문입니다.', plain=True)['structural_valid'])
         self.assertFalse(analyze('[수요를 확인했습니다]\n본문입니다.', plain=True)['structural_valid'])
 
+    def test_weighted_rules_enforce_actual_boundary(self):
+        question = draft_review()['questions'][0]
+        identifier = question['id']
+        source = f'```text question={identifier}\n한글 A\n```'
+        rules = {identifier: {'summary': 'optional', 'unit': 'non_ascii_double',
+                              'source': '사용자 실측과 대조한 추정: 본문 한글 A = 6'}}
+        limits = [{'id': identifier, 'min': 0, 'max': 6}]
+        result = check_answers(source, [question], limits, rules)
+        self.assertFalse(result['errors'])
+        self.assertEqual(result['counts'][0]['measured'], 6)
+        limits[0]['max'] = 5
+        self.assertTrue(any('최대 5' in error for error in
+                            check_answers(source, [question], limits, rules)['errors']))
+
     def test_tagged_blocks_bind_limits_by_id_even_when_reordered(self):
         q1 = draft_review()['questions'][0]
         q2 = copy.deepcopy(q1)

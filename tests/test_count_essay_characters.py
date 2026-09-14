@@ -17,6 +17,27 @@ SPEC.loader.exec_module(counter)
 
 
 class CountEssayCharactersTest(unittest.TestCase):
+    def test_weighted_count_and_whitespace_rules(self) -> None:
+        text = "한글 A\r\n😀é"
+        self.assertEqual(counter.measure(text, "non_ascii_double"), 11)
+        self.assertEqual(counter.measure(text, "non_ascii_double", line_endings="crlf"), 12)
+        self.assertEqual(counter.measure(text, "non_ascii_double", line_endings="remove"), 10)
+        self.assertEqual(counter.measure(text, "non_ascii_double", whitespace="exclude"), 9)
+        self.assertEqual(counter.measure("", "non_ascii_double"), 0)
+
+    def test_cli_weighted_count_preserves_raw_utf8_bytes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "essay.md"
+            path.write_text("```text question=1\n한글 A\n```\n", encoding="utf-8")
+            completed = subprocess.run(
+                [sys.executable, str(SCRIPT), "--json", "--unit", "non_ascii_double", str(path)],
+                capture_output=True, encoding="utf-8",
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            row = json.loads(completed.stdout)["results"][0]
+            self.assertEqual(row["measured"], 6)
+            self.assertEqual(row["bytes"], 8)
+
     def test_extracts_and_counts_multiple_text_blocks(self) -> None:
         first = "안녕 세상\n둘째 줄"
         second = "ABC 123"

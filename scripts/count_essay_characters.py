@@ -19,6 +19,7 @@ ANSWER_BLOCK = re.compile(
     r"^[ \t]*```text(?P<meta>[^\r\n]*)\r?\n(?P<body>.*?)\r?\n[ \t]*```[ \t]*\r?$",
     re.MULTILINE | re.DOTALL,
 )
+COUNT_UNITS = ("characters", "utf8_bytes", "utf16_units", "non_ascii_double")
 
 
 def answer_blocks(source: str) -> list[dict[str, str | None]]:
@@ -37,7 +38,7 @@ def answer_blocks(source: str) -> list[dict[str, str | None]]:
 
 def measure(content: str, unit: str = "characters", whitespace: str = "include",
             line_endings: str = "lf") -> int:
-    if unit not in {"characters", "utf8_bytes", "utf16_units"}:
+    if unit not in COUNT_UNITS:
         raise ValueError("지원하지 않는 글자 수 단위입니다.")
     if whitespace not in {"include", "exclude"} or line_endings not in {"lf", "crlf", "remove"}:
         raise ValueError("공백 또는 줄바꿈 계산 기준이 올바르지 않습니다.")
@@ -49,6 +50,9 @@ def measure(content: str, unit: str = "characters", whitespace: str = "include",
         return len(content.encode("utf-8"))
     if unit == "utf16_units":
         return len(content.encode("utf-16-le")) // 2
+    if unit == "non_ascii_double":
+        # Weighted Unicode code points, not an encoding or UTF-16 code-unit count.
+        return sum(1 if ord(char) < 128 else 2 for char in content)
     return len(content)
 
 
@@ -79,7 +83,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--plain", action="store_true", help="파일 전체를 하나의 본문으로 계산")
     parser.add_argument("--json", action="store_true", help="JSON 형식으로 출력")
-    parser.add_argument("--unit", choices=("characters", "utf8_bytes", "utf16_units"), default="characters")
+    parser.add_argument("--unit", choices=COUNT_UNITS, default="characters")
     parser.add_argument("--whitespace", choices=("include", "exclude"), default="include")
     parser.add_argument("--line-endings", choices=("lf", "crlf", "remove"), default="lf")
     parser.add_argument("file", type=Path)

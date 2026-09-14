@@ -30,11 +30,15 @@
 | --- | --- | --- |
 | summary | required | required, optional, forbidden |
 | body | prose | prose, list, any |
-| unit | characters | characters, utf8_bytes, utf16_units |
+| unit | characters | characters, utf8_bytes, utf16_units, non_ascii_double |
 | whitespace | include | include, exclude |
 | line_endings | lf | lf, crlf, remove |
 
 `exclude`는 공백과 탭 및 줄바꿈을 포함한 모든 공백 문자를 제외한다. 줄바꿈만 제외하는 사이트는 `whitespace: include`, `line_endings: remove`로 지정한다. UTF-16 단위와 UTF-8 바이트는 문자 수와 다르다. 기업이 말한 바이트의 인코딩이나 계산 방식을 확인하지 못했으면 추측해 지정하지 않는다. 지원 화면과 계산 결과를 대조하고 미확인 조건은 남긴다.
+
+`non_ascii_double`은 ASCII 코드포인트를 1, 그 밖의 유니코드 코드포인트를 2로 계산하는 가중치 방식이다. 한글 음절은 2, 영문·공백·LF 줄바꿈은 1이며 CRLF는 2다. 실제 인코딩 바이트 수가 아니고 CP949 또는 모든 채용 사이트의 계산법을 뜻하지 않는다. 이모지도 코드포인트당 2로 계산하므로 UTF-16 기반 사이트와 다를 수 있다.
+
+사이트 실측과 대조할 때 같은 버전의 답변 전체(소제목·공백·줄바꿈 포함)를 사용한다. `source`에 공식 계산법 확인인지 사용자 실측에 맞춘 추정인지 구분하고, 대조한 문항·버전·표시값과 검토 기록 위치를 남긴다. 한글·영문 본문에서 일치해도 특수문자 등 미검증 범위까지 동일하다고 단정하지 않는다. 추정 규칙은 검사기와 훅에 동일하게 전달하되 결과를 '사이트 기준 추정'으로 보고한다. 새 본문의 실제 입력창 수치 확인은 별개이며 미확인 계산을 확정된 제출 조건 통과로 보고하지 않는다. 분량이 짧으면 먼저 필수 질문의 답과 근거를 확인하고 상한을 채우기 위해 성찰이나 포부를 반복하지 않는다.
 
 ## 동일 규칙으로 검사
 
