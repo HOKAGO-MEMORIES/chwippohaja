@@ -139,11 +139,11 @@ Java·Spring으로 Read Model을 설계했고, OOM이 없음을 확인했습니�
             result = json.loads(completed.stdout)
             self.assertEqual(result["totals"]["english_candidates"], 1)
 
-    def test_strict_cli_rejects_declarative_summary(self) -> None:
+    def test_strict_cli_accepts_sentence_summary(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "자소서.md"
             path.write_text(
-                "```text\n[운영 가능한 시스템을 만들었습니다]\n본문입니다.\n```\n",
+                "```text\n[운영 가능한 시스템을 만들었습니다.]\n본문입니다.\n```\n",
                 encoding="utf-8",
             )
             completed = subprocess.run(
@@ -152,8 +152,27 @@ Java·Spring으로 Read Model을 설계했고, OOM이 없음을 확인했습니�
                 capture_output=True,
                 encoding="utf-8",
             )
-        self.assertEqual(completed.returncode, 2)
-        self.assertIn("structural_valid=false", completed.stdout)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("structural_valid=true", completed.stdout)
+
+    def test_question_rules_accept_summary_forms_and_preserve_structure_checks(self) -> None:
+        from essay_rules import check_answers
+        questions = [{"id": "1", "answer_status": "valid"}]
+        limits = [{"id": "1", "min": 0, "max": None}]
+        for summary in ("[실패 원인을 분리한 검증]", "[실패 원인을 나눠 확인했습니다.]",
+                        "[무엇을 먼저 확인해야 할까?]"):
+            with self.subTest(summary=summary):
+                body = summary + "\n본문입니다."
+                self.assertTrue(validator.analyze(body, plain=True)["structural_valid"])
+                checked = check_answers("```text question=1\n" + body + "\n```\n",
+                                        questions, limits, {})
+                self.assertEqual(checked["errors"], [])
+        for body in ("소제목이 없는 본문입니다.", "[핵심 요약]\n- 행동 나열"):
+            with self.subTest(body=body):
+                self.assertFalse(validator.analyze(body, plain=True)["structural_valid"])
+                checked = check_answers("```text question=1\n" + body + "\n```\n",
+                                        questions, limits, {})
+                self.assertTrue(checked["errors"])
 
     def test_strict_cli_allows_review_candidates_without_structure_errors(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

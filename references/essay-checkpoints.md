@@ -74,7 +74,7 @@ valid 답변의 summary 필수 필드는 writing_brief와 같다. 다음은 기�
 
 이슈 등급과 완료 기준은 [주장과 문맥](essay-composition.md)의 판정 절을 따른다. 새 필드 없이 다음처럼 기록한다.
 
-- `reader_review.issues`: 상세 검토가 필요한 실제 문제의 구절·이유·해결과 재독 결과. 미해결 치명 문제는 `status: open`과 `fatal_issues`에 같은 R번호로 연결하고 문항을 `needs_revision`으로 둔다. open이 남은 valid 답변은 거절된다.
+- `reader_review.issues`: 네 가지 내용 기준에서 발견한 실제 문제를 기록한다. `problem`에는 문항의 요구와 현재 본문이 보여주는 것의 차이 또는 빠진 연결을, `resolution`에는 실제 수정 구절과 같은 기준으로 재독한 결과를 남긴다. 기존 판정을 바꾼 경우 그 이유도 여기에 짧게 적는다. 미해결 치명 문제는 `status: open`과 `fatal_issues`에 같은 R번호로 연결하고 문항을 `needs_revision`으로 둔다. open이 남은 valid 답변은 거절된다.
 - `recommended_issues`: 남은 권장 문제의 R번호·실제 구절·부족한 이유·다음 조치를 기존 문자열 배열에 기록한다. 치명 문제가 없는 초안에는 남을 수 있지만 최종 후보 전 보완한다. 권장 문제만으로 `needs_revision`을 사용하지 않는다.
 - `revision.changes`, `remaining_issues`: 적용한 선택 사항과 미결정 선택도 문제와 구분해 기록한다. 취향을 권장 문제로 분류하거나 선택지를 일부러 만들지 않는다.
 
@@ -172,7 +172,7 @@ python scripts/validate_essay_checkpoint.py 작성설계.md
 
 문서 수준에는 표현과 글자 수 검토 상태를 함께 기록한다.
 
-`content_checks`는 [주장과 문맥](essay-composition.md)의 내용·사실 검토 결과를 기록한다. 문항·소재 적합성은 `question_type_fit_verified`, `material_fit_verified`, 행동과 결과의 연결은 `judgment_action_result_connected`, 독자 이해는 `reader_effect_clear`, 직접 요구한 성찰과 경험의 의미는 각각 `reflection_requirement_met`, `experience_meaning_present`에 대응한다.
+`content_checks`는 [주장과 문맥](essay-composition.md)의 네 가지 내용 기준과 사실 검토 결과를 기록한다. 소재 적합성은 `question_type_fit_verified`, `material_fit_verified`, 문장과 행동·결과의 연결은 `judgment_action_result_connected`, 처음 읽는 사람의 이해는 `reader_effect_clear`, 직접 요구한 성찰과 경험의 의미·강점·활용은 각각 `reflection_requirement_met`, `experience_meaning_present`에 대응한다. 활용 계획은 `reader_review.summary`의 실제 본문 근거로 설명하고 새 필드를 추가하지 않는다. 기존 필드의 true 값으로 내용 검토를 대신하지 않는다.
 
 ```json
 "style_review": {

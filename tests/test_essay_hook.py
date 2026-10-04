@@ -300,14 +300,25 @@ class EssayHookTests(unittest.TestCase):
     def test_stop_blocks_structurally_invalid_draft(self) -> None:
         self.assertEqual(self.start().returncode, 0)
         source = self.draft.read_text(encoding="utf-8")
-        self.draft.write_text(source.replace("[재실행에도 수렴하는 구조]", "[구조를 개선했습니다]"), encoding="utf-8")
+        self.draft.write_text(source.replace("[재실행에도 수렴하는 구조]", "요약 없이 본문을 시작했습니다."), encoding="utf-8")
         result = self.run_script(
             "hook",
             input_value={"event": "Stop", "session_id": "session-a", "cwd": str(self.working)},
         )
         response = json.loads(result.stdout)
         self.assertEqual(response["decision"], "block")
-        self.assertIn("서술형 요약", response["reason"])
+        self.assertIn("요약 누락", response["reason"])
+
+    def test_stop_accepts_sentence_summary(self) -> None:
+        self.assertEqual(self.start().returncode, 0)
+        source = self.draft.read_text(encoding="utf-8")
+        self.draft.write_text(source.replace("[재실행에도 수렴하는 구조]", "[재실행 결과를 확인했습니다.]"), encoding="utf-8")
+        result = self.run_script(
+            "hook",
+            input_value={"event": "Stop", "session_id": "session-a", "cwd": str(self.working)},
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), {})
 
     def test_waiting_for_user_allows_stop(self) -> None:
         self.assertEqual(self.start().returncode, 0)

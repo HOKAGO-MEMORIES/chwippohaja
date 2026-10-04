@@ -80,9 +80,9 @@ class WorkflowRegressions(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_rules({'2': {'summary':'required'}}, ['1'])
 
-    def test_nominal_noun_ending_in_yo_is_not_blocked(self):
+    def test_noun_and_sentence_summaries_are_not_blocked(self):
         self.assertTrue(analyze('[고객의 수요]\n본문입니다.', plain=True)['structural_valid'])
-        self.assertFalse(analyze('[수요를 확인했습니다]\n본문입니다.', plain=True)['structural_valid'])
+        self.assertTrue(analyze('[수요를 확인했습니다]\n본문입니다.', plain=True)['structural_valid'])
 
     def test_weighted_rules_enforce_actual_boundary(self):
         question = draft_review()['questions'][0]

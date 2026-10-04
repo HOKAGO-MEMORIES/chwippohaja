@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from count_essay_characters import COUNT_UNITS, answer_blocks, count_blocks, measure
-from validate_essay_style import analyze, SUMMARY
+from validate_essay_style import analyze, SUMMARY, STRUCTURAL_TOTALS
 
 
 DEFAULT = {"summary": "required", "body": "prose", "unit": "characters",
@@ -71,11 +71,9 @@ def check_answers(source: str, questions: list[dict], limits: list[dict],
         structural = dict(style["totals"])
         if rule["body"] != "prose":
             structural["outline_lines"] = 0
-        if any(structural[key] for key in ("missing_summaries", "declarative_summaries",
-                                           "punctuated_summaries", "outline_lines")):
+        if any(structural[key] for key in STRUCTURAL_TOTALS):
             errors.append(f"자소서 {identifier}번: 대괄호 요약 또는 서술식 본문 구조 검사를 통과하지 못했습니다 "
-                          f"(요약 누락 {structural['missing_summaries']}, 서술형 요약 {structural['declarative_summaries']}, "
-                          f"문장부호 요약 {structural['punctuated_summaries']}, 개조식 행 {structural['outline_lines']}).")
+                          f"(요약 누락 {structural['missing_summaries']}, 개조식 행 {structural['outline_lines']}).")
         if rule["summary"] == "forbidden" and any(SUMMARY.fullmatch(line.strip()) for line in body.splitlines()):
             errors.append(f"자소서 {identifier}번: 기업 또는 사용자가 금지한 대괄호 소제목이 있습니다.")
         if rule["body"] == "list" and not style["totals"]["outline_lines"]:

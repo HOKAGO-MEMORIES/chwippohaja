@@ -20,15 +20,12 @@ CONNECTIVE_COMMA = re.compile(
     r"[가-힣A-Za-z0-9_)`]+(?:하고|했고|하며|했으며|지만|했지만|는데|했는데|면서|해서),"
 )
 SUMMARY = re.compile(r"^\[[^\[\]\n]+\]$")
-# Only unambiguous polite endings are blocking. A noun ending in 요 (수요,
-# 필요) is not a sentence; ambiguous plain endings remain a semantic review.
+# Summary endings and punctuation are descriptive metadata, not structure errors.
 DECLARATIVE_SUMMARY_ENDING = re.compile(r"(?:습니다|ㅂ니다|합니다|입니다|됩니다|했습니다|해요|했어요|이에요|예요)[.!?]?$")
 SUMMARY_TERMINAL_PUNCTUATION = re.compile(r"[.!?]$")
 OUTLINE_LINE = re.compile(r"(?m)^[ \t]*(?:[-*+][ \t]+|\d+[.)][ \t]+)")
 STRUCTURAL_TOTALS = (
     "missing_summaries",
-    "declarative_summaries",
-    "punctuated_summaries",
     "outline_lines",
 )
 
