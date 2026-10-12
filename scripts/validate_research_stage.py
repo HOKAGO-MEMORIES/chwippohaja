@@ -46,7 +46,7 @@ SOURCE_SUFFIXES = {
 def read_text(path: Path, errors: list[str]) -> str:
     try:
         text = path.read_text(encoding="utf-8")
-    except OSError as exc:
+    except (OSError, UnicodeError) as exc:
         errors.append(f"파일을 읽을 수 없습니다: {path.name}: {exc}")
         return ""
     if not text.strip():
@@ -146,7 +146,7 @@ def validate_research_stage(application: Path) -> dict[str, Any]:
     else:
         try:
             identity = json.loads(marker.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             errors.append(f"지원 건 표식을 읽을 수 없습니다: {exc}")
         if not isinstance(identity, dict):
             errors.append("지원 건 표식은 JSON 객체여야 합니다.")
@@ -243,12 +243,18 @@ def configure_utf8_stdio() -> None:
 
 def validate_targets(applications: list[Path], required_services: list[str] | None = None) -> dict[str, Any]:
     """Tally several applications in one call so a multi-target report cannot drop any."""
-    resolved = [application.resolve() for application in applications]
+    if not applications:
+        raise ValueError("검사할 지원 건이 하나 이상 필요합니다.")
+    resolved = [application.expanduser().resolve() for application in applications]
     if len(resolved) != len(set(resolved)):
         raise ValueError("같은 지원 건이 두 번 이상 지정됐습니다. 대상별로 한 번씩만 넘겨야 집계가 맞습니다.")
     results: list[dict[str, Any]] = []
-    for application in applications:
-        validation = validate_research_stage(application)
+    for application in resolved:
+        try:
+            validation = validate_research_stage(application)
+        except (OSError, ValueError) as exc:
+            validation = {"status": "partial", "errors": [str(exc)],
+                          "warnings": [], "artifacts": {}}
         pending_services = []
         for service in required_services or []:
             try:

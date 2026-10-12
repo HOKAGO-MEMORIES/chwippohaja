@@ -215,11 +215,14 @@ def main(argv: list[str] | None = None) -> int:
             if args.plain or args.no_summary:
                 raise ValueError("--rules는 --plain 또는 --no-summary와 함께 사용할 수 없습니다.")
             from essay_rules import check_answers, load_rules
-            from validate_essay_checkpoint import load_checkpoint
+            from validate_essay_checkpoint import load_checkpoint, validate_common
             checkpoint = load_checkpoint(source)
             questions = checkpoint.get("questions")
             if checkpoint.get("phase") != "draft_review" or not isinstance(questions, list) or not questions:
                 raise ValueError("--rules에는 문항이 있는 draft_review 체크포인트가 필요합니다.")
+            errors = validate_common(checkpoint)
+            if errors:
+                raise ValueError("; ".join(errors))
             ids = [question["id"] for question in questions]
             limits = [{"id": identifier, "min": 0, "max": None} for identifier in ids]
             checked = check_answers(source, questions, limits, load_rules(args.rules, ids))

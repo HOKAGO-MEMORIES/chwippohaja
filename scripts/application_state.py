@@ -105,6 +105,7 @@ def current(application: Path, kind: str, fallback: list[Path] | None = None) ->
 
 
 def snapshot(application: Path, scope: str) -> dict[str, str]:
+    application = application.expanduser().resolve()
     patterns = {"posting_analysis": "*공고분석*.md", "company_research": "*기업리서치*.md"}
     kinds = patterns if scope == "research" else KINDS
     result = {}

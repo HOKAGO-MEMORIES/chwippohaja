@@ -132,6 +132,8 @@ def load_checkpoint(source: str) -> dict[str, Any]:
 
 def validate_common(checkpoint: dict[str, Any]) -> list[str]:
     errors: list[str] = []
+    if "reader_rubric_required" in checkpoint and type(checkpoint["reader_rubric_required"]) is not bool:
+        errors.append("reader_rubric_required는 boolean이어야 합니다.")
     if type(checkpoint.get("schema_version")) is not int or checkpoint["schema_version"] not in (1, 2):
         errors.append("schema_version은 1 또는 2여야 합니다.")
     questions = checkpoint.get("questions")
@@ -272,6 +274,8 @@ def validate_draft_review(checkpoint: dict[str, Any]) -> list[str]:
             fatal = []
         if not string_list(recommended):
             errors.append(f"{identifier}: recommended_issues는 문자열 배열이어야 합니다.")
+        elif status == "final_candidate" and recommended:
+            errors.append(f"{identifier}: 최종 후보에는 미해결 권장 이슈가 남아 있으면 안 됩니다.")
         if not isinstance(question.get("experience_question"), bool):
             errors.append(f"{identifier}: experience_question은 boolean이어야 합니다.")
         if not isinstance(question.get("reflection_required"), bool):

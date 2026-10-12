@@ -73,7 +73,7 @@ valid 답변의 summary 필수 필드는 writing_brief와 같다. 다음은 기�
 }
 ```
 
-`memorable_line`은 [읽는 사람 점검](essay-reader-rubric.md)에서 뽑은, 이 지원자를 기억하게 만드는 문장을 본문에서 그대로 옮긴 것이다. 적으면 `essay_check.py`가 실제 본문에 있는지 확인한다. 새 작성본은 문서 수준에 `"reader_rubric_required": true`를 두며, 이때 `final_candidate`의 경험형 답변에는 필수다. 이 표시가 없는 이전 작성본은 기존 기준으로 검사한다. 뽑을 문장이 없으면 비워 두고 `recommended_issues`에 남긴다.
+`memorable_line`은 [읽는 사람 점검](essay-reader-rubric.md)에서 뽑은, 이 지원자를 기억하게 만드는 문장을 본문에서 그대로 옮긴 것이다. 적으면 `essay_check.py`가 실제 본문에 있는지 확인한다. 새 설계와 작성본은 문서 수준에 `"reader_rubric_required": true`를 두며, 이때 `final_candidate`의 경험형 답변에는 필수다. 설계에 이 표시가 있으면 작성본에서 누락해도 최종 후보 검사를 생략할 수 없다. 두 파일 모두 표시가 없는 이전 작성본은 기존 기준으로 검사한다. 뽑을 문장이 없으면 비워 두고 `recommended_issues`에 남긴다.
 
 이슈 등급과 완료 기준은 [주장과 문맥](essay-composition.md)의 판정 절을 따른다. 다음처럼 기록한다.
 

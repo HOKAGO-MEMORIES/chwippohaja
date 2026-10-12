@@ -170,6 +170,58 @@ class EssayQualityContractTest(unittest.TestCase):
             review['questions'][0]['reader_review']['memorable_line'] = 3
             self.assertTrue(validate(review))
 
+    def test_plan_rubric_requirement_cannot_be_disabled_in_final_draft(self):
+        with tempfile.TemporaryDirectory() as temp:
+            plan_path, draft_path = Path(temp)/'plan.md', Path(temp)/'draft.md'
+            plan = plan_v2()
+            plan['reader_rubric_required'] = True
+            plan_path.write_text(checkpoint(plan), encoding='utf-8')
+            review = review_v2()
+            review['document_status'] = 'final_candidate'
+            body = '[전체 배포 작업 제거]\n내용 갱신과 프로그램 배포를 분리했습니다.'
+            for marker in (None, False):
+                if marker is not None:
+                    review['reader_rubric_required'] = marker
+                draft_path.write_text('```text question=1\n'+body+'\n```\n'+checkpoint(review), encoding='utf-8')
+                result = essay_check.check_pair(plan_path, draft_path)
+                self.assertFalse(result['valid'])
+                self.assertTrue(any('memorable_line' in e for e in result['errors']))
+            review['questions'][0]['reader_review']['memorable_line'] = body.splitlines()[1]
+            draft_path.write_text('```text question=1\n'+body+'\n```\n'+checkpoint(review), encoding='utf-8')
+            self.assertTrue(essay_check.check_pair(plan_path, draft_path)['valid'])
+
+    def test_rubric_marker_must_be_boolean(self):
+        for value in ('false', 1, None, []):
+            plan = plan_v2()
+            plan['reader_rubric_required'] = value
+            self.assertTrue(any('reader_rubric_required' in e for e in validate(plan)))
+
+    def test_recommended_issue_allows_draft_but_blocks_final(self):
+        review = review_v2()
+        review['questions'][0]['recommended_issues'] = ['R1: 판단 근거의 설명 보완']
+        self.assertEqual(validate(review), [])
+        review['document_status'] = 'final_candidate'
+        self.assertTrue(any('권장 이슈' in e for e in validate(review)))
+        review['questions'][0]['recommended_issues'] = []
+        self.assertEqual(validate(review), [])
+
+    def test_style_rules_malformed_questions_returns_error_without_traceback(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            rules = root/'rules.json'
+            rules.write_text('{}', encoding='utf-8')
+            draft = root/'draft.md'
+            for questions in ([None], [{}], [{'id': []}]):
+                review = draft_review()
+                review['questions'] = questions
+                draft.write_text(checkpoint(review), encoding='utf-8')
+                result = subprocess.run([sys.executable,
+                    str(Path(essay_check.__file__).with_name('validate_essay_style.py')),
+                    '--strict', '--rules', str(rules), str(draft)],
+                    capture_output=True, encoding='utf-8')
+                self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn('Traceback', result.stderr)
+
     def test_cli_rejects_missing_reader_record(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp)/'draft.md'

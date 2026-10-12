@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from essay_rules import check_answers, load_rules
+from essay_rules import check_answers, load_rules, validate_rules
 from validate_essay_checkpoint import load_checkpoint, validate
 
 
@@ -91,26 +91,44 @@ def check_pair(plan: Path, draft: Path, limits: list[dict[str, Any]] | None = No
             and pre_checkpoint.get("schema_version") != draft_checkpoint.get("schema_version")):
         errors.append("작성 설계와 자소서의 체크포인트 schema_version이 다릅니다. 같은 버전으로 검토해야 합니다.")
 
-    if not limits:
-        source = pre_checkpoint or draft_checkpoint
-        limits = [{"id": identifier, "min": 0, "max": None}
-                  for identifier in (question_ids(source) if source else [])]
+    limits = resolve_limits(pre_checkpoint or draft_checkpoint or {}, limits, rules or {})
     registered = [item["id"] for item in limits]
     for checkpoint in (pre_checkpoint, draft_checkpoint):
         if checkpoint:
             errors.extend(question_set_errors(checkpoint, registered))
     if pre_checkpoint and draft_checkpoint and question_ids(pre_checkpoint) != question_ids(draft_checkpoint):
         errors.append("작성 설계와 자소서 검토의 문항 ID 및 순서가 다릅니다.")
+    if pre_checkpoint and not pre_errors and draft_checkpoint and not draft_errors:
+        planned = {q["id"]: q for q in pre_checkpoint["questions"]}
+        for question in draft_checkpoint["questions"]:
+            original = planned.get(question["id"])
+            if original is None:
+                continue
+            expected = "valid" if original["action"] == "write" else "deferred"
+            if question["answer_status"] != expected:
+                errors.append(f"{question['id']}: 설계의 작성·보류 결정과 작성본 상태가 다릅니다. 설계를 먼저 갱신하세요.")
+            for field in ("experience_question", "reflection_required"):
+                if question.get(field) != original.get(field):
+                    errors.append(f"{question['id']}: 설계와 작성본의 {field}가 다릅니다.")
 
-    result: dict[str, Any] = {"counts": [], "style_totals": None, "answers": {}}
-    if draft.is_file() and draft_checkpoint and not draft_errors:
+    result: dict[str, Any] = {"counts": [], "style_totals": None, "style_blocks": [], "answers": {}}
+    # A valid plan defines the expected body even while review flags are false.
+    # Completion errors remain errors; they must not hide count/format results.
+    body_questions = None
+    if pre_checkpoint and not pre_errors:
+        body_questions = planned_answers(pre_checkpoint)
+    elif draft_checkpoint and not draft_errors:
+        body_questions = draft_checkpoint["questions"]
+    if draft.is_file() and body_questions is not None:
         try:
             result = check_answers(draft.read_text(encoding="utf-8"),
-                                   draft_checkpoint["questions"], limits, rules or {})
+                                   body_questions, limits, rules or {})
             errors.extend(result["errors"])
-            if pre_checkpoint and not pre_errors and pre_checkpoint.get("evidence_mapping_required"):
+            if draft_checkpoint and not draft_errors and pre_checkpoint and not pre_errors and pre_checkpoint.get("evidence_mapping_required"):
                 errors.extend(evidence_errors(pre_checkpoint, draft_checkpoint, result["answers"]))
-            errors.extend(memorable_line_errors(draft_checkpoint, result["answers"]))
+            if draft_checkpoint and not draft_errors:
+                required = bool(pre_checkpoint and pre_checkpoint.get("reader_rubric_required") is True)
+                errors.extend(memorable_line_errors(draft_checkpoint, result["answers"], required))
         except (OSError, UnicodeError, ValueError) as exc:
             errors.append(f"자소서: 표현 또는 글자 수 검사 실패: {exc}")
     return {
@@ -119,7 +137,43 @@ def check_pair(plan: Path, draft: Path, limits: list[dict[str, Any]] | None = No
         "document_status": draft_checkpoint.get("document_status") if draft_checkpoint else None,
         "counts": result["counts"],
         "style_totals": result["style_totals"],
+        "style_blocks": result["style_blocks"],
     }
+
+
+def planned_answers(checkpoint: dict[str, Any]) -> list[dict[str, str]]:
+    return [{"id": q["id"], "answer_status": "valid" if q["action"] == "write" else "deferred"}
+            for q in checkpoint["questions"]]
+
+
+def resolve_limits(checkpoint: dict[str, Any], limits: list[dict[str, Any]] | None,
+                   rules: dict[str, Any]) -> list[dict[str, Any]]:
+    by_id = {identifier: {"id": identifier, "min": 0, "max": None}
+             for identifier in question_ids(checkpoint)}
+    by_id.update({item["id"]: {"id": item["id"], "min": 0, "max": None} for item in limits or []})
+    validate_rules(rules, list(by_id))
+    by_id.update({item["id"]: item for item in limits_from_rules(rules)})
+    by_id.update({item["id"]: item for item in limits or []})
+    return list(by_id.values())
+
+
+def check_body(plan: Path, draft: Path, limits: list[dict[str, Any]] | None = None,
+               rules: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Inspect raw answer blocks before review records exist; never certify content."""
+    checkpoint, errors = validate_checkpoint_file(plan, "pre_draft")
+    result: dict[str, Any] = {"counts": [], "style_totals": None, "style_blocks": []}
+    if checkpoint and not errors:
+        limits = resolve_limits(checkpoint, limits, rules or {})
+        errors.extend(question_set_errors(checkpoint, [item["id"] for item in limits]))
+        try:
+            result = check_answers(draft.read_text(encoding="utf-8"), planned_answers(checkpoint),
+                                   limits, rules or {})
+            errors.extend(result["errors"])
+        except (OSError, UnicodeError, ValueError) as exc:
+            errors.append(str(exc))
+    return {"check_scope": "body_only", "content_review_verified": False,
+            "valid": not errors, "errors": errors, "counts": result["counts"],
+            "style_totals": result["style_totals"], "style_blocks": result["style_blocks"]}
 
 
 def evidence_errors(pre_checkpoint: dict[str, Any], draft_checkpoint: dict[str, Any],
@@ -142,7 +196,8 @@ def evidence_errors(pre_checkpoint: dict[str, Any], draft_checkpoint: dict[str, 
     return errors
 
 
-def memorable_line_errors(draft_checkpoint: dict[str, Any], answers: dict[str, str]) -> list[str]:
+def memorable_line_errors(draft_checkpoint: dict[str, Any], answers: dict[str, str],
+                          required_by_plan: bool = False) -> list[str]:
     """The recorded memorable line must be real body text.
 
     Final candidates must have one only when the document opts in with
@@ -150,7 +205,7 @@ def memorable_line_errors(draft_checkpoint: dict[str, Any], answers: dict[str, s
     """
     errors: list[str] = []
     final = (draft_checkpoint.get("document_status") == "final_candidate"
-             and draft_checkpoint.get("reader_rubric_required") is True)
+             and (required_by_plan or draft_checkpoint.get("reader_rubric_required") is True))
     for question in draft_checkpoint["questions"]:
         if question.get("answer_status") != "valid":
             continue
@@ -174,6 +229,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--plan", required=True, type=Path, help="pre_draft 체크포인트가 있는 작성 설계")
     parser.add_argument("--draft", type=Path, help="draft_review 체크포인트가 있는 작성본. 없으면 설계만 검사")
+    parser.add_argument("--body-only", action="store_true", help="검토 기록 전 본문·형식·분량만 검사 (--draft 필요)")
     parser.add_argument("--limit", type=parse_limit, action="append", default=[],
                         help="문항ID:최소:최대. 규칙 파일의 min/max보다 우선")
     parser.add_argument("--rules", type=Path, help="문항 ID별 형식·계산·분량 규칙 JSON")
@@ -184,6 +240,10 @@ def main(argv: list[str] | None = None) -> int:
     configure_utf8_stdio()
     args = parse_args(argv)
     try:
+        if args.body_only and args.draft is None:
+            raise ValueError("--body-only에는 --draft가 필요합니다.")
+        if args.draft is not None and args.plan.resolve() == args.draft.resolve():
+            raise ValueError("작성 설계와 작성본은 서로 다른 파일이어야 합니다.")
         checkpoint, _ = validate_checkpoint_file(args.plan, "pre_draft")
         by_id = {identifier: {"id": identifier, "min": 0, "max": None}
                  for identifier in (question_ids(checkpoint) if checkpoint else [])}
@@ -192,7 +252,9 @@ def main(argv: list[str] | None = None) -> int:
         by_id.update({item["id"]: item for item in limits_from_rules(rules)})
         by_id.update({item["id"]: item for item in args.limit})
         limits = list(by_id.values())
-        if args.draft is None:
+        if args.body_only:
+            result = check_body(args.plan, args.draft, limits, rules)
+        elif args.draft is None:
             result = check_plan(args.plan, limits)
         else:
             result = check_pair(args.plan, args.draft, limits, rules)

@@ -4,6 +4,7 @@ import contextlib
 import copy
 import io
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -50,6 +51,92 @@ class WorkflowRegressions(unittest.TestCase):
 
     def plan_check(self, *extra, plan=None):
         return self.run_check('--plan', plan or self.plan, '--limit', '1:0:1500', *extra)
+
+    def test_precheck_runs_without_review_then_final_requires_review(self):
+        self.draft.write_text('```text question=1\n'+self.body+'\n```', encoding='utf-8')
+        code, result = self.check('--body-only')
+        self.assertEqual(code, 0, result)
+        self.assertEqual(result['check_scope'], 'body_only')
+        self.assertFalse(result['content_review_verified'])
+        self.assertTrue(result['counts'])
+        self.assertEqual(self.check()[0], 2)
+        self.write_draft()
+        self.assertEqual(self.check()[0], 0)
+
+    def test_unfinished_review_still_returns_actual_counts_and_style(self):
+        review = draft_review()
+        for key in review['style_review']:
+            review['style_review'][key] = False
+        self.write_draft(review=review)
+        code, result = self.check('--limit', '1:0:5')
+        self.assertEqual(code, 2)
+        self.assertTrue(result['counts'])
+        self.assertIsNotNone(result['style_totals'])
+        self.assertTrue(result['style_blocks'])
+        self.assertTrue(any('초과' in error for error in result['errors']))
+        self.assertTrue(any('style_review' in error for error in result['errors']))
+
+    def test_body_precheck_rejects_duplicate_missing_and_unknown_answers(self):
+        for blocks in ('', '```text question=2\n'+self.body+'\n```',
+                       ('```text question=1\n'+self.body+'\n```\n')*2):
+            with self.subTest(blocks=blocks):
+                self.draft.write_text(blocks, encoding='utf-8')
+                self.assertEqual(self.check('--body-only')[0], 2)
+        self.draft.write_text('```text\n'+self.body+'\n```', encoding='utf-8')
+        self.assertEqual(self.check('--body-only')[0], 0)
+
+    def test_body_only_requires_distinct_draft_file(self):
+        self.assertEqual(self.run_check('--plan', self.plan, '--body-only')[0], 2)
+        self.assertEqual(self.run_check('--plan', self.plan, '--draft', self.plan,
+                                       '--body-only')[0], 2)
+
+    def test_direct_api_and_cli_enforce_rule_limits(self):
+        rules = {'1': {'max': 5}}
+        rules_path = self.root/'rules.json'
+        rules_path.write_text(json.dumps(rules), encoding='utf-8')
+        for checker in (ec.check_pair, ec.check_body):
+            self.assertFalse(checker(self.plan, self.draft, rules=rules)['valid'])
+            self.assertTrue(checker(self.plan, self.draft,
+                            limits=[{'id':'1','min':0,'max':1500}], rules=rules)['valid'])
+        code, result = self.run_check('--plan', self.plan, '--draft', self.draft,
+                                     '--body-only', '--rules', rules_path)
+        self.assertEqual(code, 2)
+        self.assertEqual(result['counts'], ec.check_body(self.plan, self.draft, rules=rules)['counts'])
+
+    def test_draft_cannot_drop_planned_experience_requirement(self):
+        review = draft_review()
+        review['questions'][0]['experience_question'] = False
+        self.write_draft(review=review)
+        code, result = self.check()
+        self.assertEqual(code, 2)
+        self.assertTrue(any('experience_question' in error for error in result['errors']))
+
+    def test_relative_sync_and_snapshot_match_absolute_paths(self):
+        research_fixture.ValidateResearchStageTest().write_valid_documents(self.app)
+        aps.sync(self.app, 'notion', 'verified', '외부 페이지 재조회 확인')
+        expected = validate_targets([self.app], ['notion'])
+        previous = Path.cwd()
+        try:
+            os.chdir(self.root)
+            relative = self.app.relative_to(self.root)
+            self.assertEqual(validate_targets([relative], ['notion']), expected)
+            self.assertEqual(aps.snapshot(relative, 'research'), aps.snapshot(self.app, 'research'))
+            self.assertTrue(aps.sync_verified(relative, 'notion'))
+            with self.assertRaises(ValueError):
+                validate_targets([relative, self.app])
+        finally:
+            os.chdir(previous)
+        self.assertTrue(expected['complete'])
+
+    def test_research_batch_keeps_corrupt_target_in_tally(self):
+        research_fixture.ValidateResearchStageTest().write_valid_documents(self.app)
+        broken = Path(aw.apply_application(self.root, '다른기업', '백엔드')['application'])
+        (broken/'01_공고_JD/.application.json').write_bytes(b'\xff')
+        result = validate_targets([broken, self.app], [])
+        self.assertEqual(result['counts'], {'total':2, 'complete':1, 'incomplete':1})
+        self.assertTrue(result['targets'][0]['validation']['errors'])
+        with self.assertRaises(ValueError):
+            validate_targets([])
 
     def test_registered_missing_question_blocks_plan_and_draft(self):
         code, result = self.plan_check('--limit', '2:0:1500')
