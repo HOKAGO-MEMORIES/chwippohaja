@@ -24,6 +24,22 @@ SUMMARY = re.compile(r"^\[[^\[\]\n]+\]$")
 DECLARATIVE_SUMMARY_ENDING = re.compile(r"(?:습니다|ㅂ니다|합니다|입니다|됩니다|했습니다|해요|했어요|이에요|예요)[.!?]?$")
 SUMMARY_TERMINAL_PUNCTUATION = re.compile(r"[.!?]$")
 OUTLINE_LINE = re.compile(r"(?m)^[ \t]*(?:[-*+][ \t]+|\d+[.)][ \t]+)")
+# Review candidates for prose that tends to read as boilerplate. Never structural errors.
+STOCK_PHRASES = re.compile(
+    r"(?:이|그) 경험(?:을 통해|으로|에서)[^.\n]{0,40}?(?:배웠습니다|느꼈습니다|깨달았습니다)"
+    r"|점을 배웠습니다"
+    r"|[가-힣]+(?:가|이) 되겠습니다"
+    r"|성장하겠습니다"
+    r"|기여하겠습니다"
+    r"|경험입니다[.]?$"
+    r"|적합한 이유입니다"
+    r"|맞닿아"
+    r"|단정하지 않"
+    r"|과장하지 않",
+    re.MULTILINE,
+)
+SENTENCE_END = re.compile(r"[^.!?\n]+[.!?]")
+REPEATED_ENDING_RUN = 4
 STRUCTURAL_TOTALS = (
     "missing_summaries",
     "outline_lines",
@@ -94,6 +110,11 @@ def analyze_block(content: str, index: int, require_summary: bool) -> dict[str, 
         if require_summary and summary_ok
         else None
     )
+    endings = [match.group(0).strip() for match in SENTENCE_END.finditer(content)]
+    run = longest = 1 if endings else 0
+    for previous, current in zip(endings, endings[1:]):
+        run = run + 1 if current.endswith("했습니다.") and previous.endswith("했습니다.") else 1
+        longest = max(longest, run)
     outline_lines = occurrences(content, OUTLINE_LINE)
     if summary_ok:
         outline_lines = [item for item in outline_lines if item["line"] > 1]
@@ -104,6 +125,8 @@ def analyze_block(content: str, index: int, require_summary: bool) -> dict[str, 
         "english_candidates": english,
         "connective_commas": occurrences(content, CONNECTIVE_COMMA),
         "outline_lines": outline_lines,
+        "stock_phrases": occurrences(content, STOCK_PHRASES),
+        "repeated_ending_run": longest if longest >= REPEATED_ENDING_RUN else 0,
         "summary": {
             "required": require_summary,
             "present": summary_ok,
@@ -154,6 +177,8 @@ def analyze(source: str, plain: bool = False, require_summary: bool = True) -> d
                 1 for item in results if item["summary"]["style"] == "punctuated"
             ),
             "outline_lines": sum(len(item["outline_lines"]) for item in results),
+            "stock_phrases": sum(len(item["stock_phrases"]) for item in results),
+            "repeated_ending_runs": sum(1 for item in results if item["repeated_ending_run"]),
         },
     }
     result["structural_valid"] = not any(
@@ -190,11 +215,14 @@ def main(argv: list[str] | None = None) -> int:
             if args.plain or args.no_summary:
                 raise ValueError("--rules는 --plain 또는 --no-summary와 함께 사용할 수 없습니다.")
             from essay_rules import check_answers, load_rules
-            from validate_essay_checkpoint import load_checkpoint
+            from validate_essay_checkpoint import load_checkpoint, validate_common
             checkpoint = load_checkpoint(source)
             questions = checkpoint.get("questions")
             if checkpoint.get("phase") != "draft_review" or not isinstance(questions, list) or not questions:
                 raise ValueError("--rules에는 문항이 있는 draft_review 체크포인트가 필요합니다.")
+            errors = validate_common(checkpoint)
+            if errors:
+                raise ValueError("; ".join(errors))
             ids = [question["id"] for question in questions]
             limits = [{"id": identifier, "min": 0, "max": None} for identifier in ids]
             checked = check_answers(source, questions, limits, load_rules(args.rules, ids))
@@ -218,6 +246,7 @@ def main(argv: list[str] | None = None) -> int:
             "connective_commas={connective_commas} missing_summaries={missing_summaries} "
             "declarative_summaries={declarative_summaries} "
             "punctuated_summaries={punctuated_summaries} outline_lines={outline_lines} "
+            "stock_phrases={stock_phrases} repeated_ending_runs={repeated_ending_runs} "
             "structural_valid={structural_valid}".format(
                 structural_valid=str(result["structural_valid"]).lower(), **totals
             )
@@ -229,6 +258,7 @@ def main(argv: list[str] | None = None) -> int:
                 "english_candidates",
                 "connective_commas",
                 "outline_lines",
+                "stock_phrases",
             ):
                 for item in block[name]:
                     value = item.get("value", MIDDOT)
@@ -236,6 +266,9 @@ def main(argv: list[str] | None = None) -> int:
                         f"block {block['block']} {name} line {item['line']} "
                         f"column {item['column']}: {value} | {item['context']}"
                     )
+            if block["repeated_ending_run"]:
+                print(f"block {block['block']} repeated_ending_run: "
+                      f"'~했습니다.' 문장 {block['repeated_ending_run']}개 연속")
             if block["summary"]["present"] is False:
                 print(
                     f"block {block['block']} missing_summary: "

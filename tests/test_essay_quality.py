@@ -8,9 +8,9 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-import essay_hook
+import essay_check
 from validate_essay_checkpoint import validate
-from test_essay_hook import pre_draft, draft_review, checkpoint
+from essay_fixtures import pre_draft, draft_review, checkpoint
 
 
 def brief():
@@ -130,17 +130,15 @@ class EssayQualityContractTest(unittest.TestCase):
         review['questions'][0]['answer_evidence'] = []
         self.assertTrue(any('answer_evidence' in error for error in validate(review)))
 
-    def test_hook_rejects_review_downgrade_and_checks_actual_evidence(self):
+    def test_check_rejects_review_downgrade_and_checks_actual_evidence(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             plan_path, draft_path = root/'plan.md', root/'draft.md'
             plan_path.write_text(checkpoint(plan_v2()), encoding='utf-8')
             body = '[전체 배포 작업 제거]\n내용 갱신과 프로그램 배포를 분리했습니다.'
-            state = {'plan_file':'plan.md','draft_file':'draft.md',
-                     'character_limits':[{'id':'1','min':0,'max':None}]}
             def check(review):
                 draft_path.write_text('```text question=1\n'+body+'\n```\n'+checkpoint(review), encoding='utf-8')
-                return essay_hook.validate_run(root, state)
+                return essay_check.check_pair(plan_path, draft_path)
             review = review_v2()
             self.assertTrue(check(review)['valid'])
             review['schema_version'] = 1
@@ -149,13 +147,88 @@ class EssayQualityContractTest(unittest.TestCase):
             review['questions'][0]['answer_evidence'][0]['quote'] = '본문에 없는 성과'
             self.assertTrue(any('인용 구절' in error for error in check(review)['errors']))
 
+    def test_memorable_line_must_be_body_text_and_is_required_for_final(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            plan_path, draft_path = root/'plan.md', root/'draft.md'
+            plan_path.write_text(checkpoint(plan_v2()), encoding='utf-8')
+            body = '[전체 배포 작업 제거]\n내용 갱신과 프로그램 배포를 분리했습니다.'
+            def check(review):
+                draft_path.write_text('```text question=1\n'+body+'\n```\n'+checkpoint(review), encoding='utf-8')
+                return essay_check.check_pair(plan_path, draft_path)
+            review = review_v2()
+            review['questions'][0]['reader_review']['memorable_line'] = '본문에 없는 문장'
+            self.assertTrue(any('memorable_line' in error for error in check(review)['errors']))
+            review['questions'][0]['reader_review']['memorable_line'] = '내용 갱신과 프로그램 배포를 분리했습니다.'
+            self.assertTrue(check(review)['valid'])
+            review['document_status'] = 'final_candidate'
+            self.assertTrue(check(review)['valid'])
+            del review['questions'][0]['reader_review']['memorable_line']
+            self.assertTrue(check(review)['valid'], 'documents written before the rubric stay valid')
+            review['reader_rubric_required'] = True
+            self.assertTrue(any('final_candidate' in error for error in check(review)['errors']))
+            review['questions'][0]['reader_review']['memorable_line'] = 3
+            self.assertTrue(validate(review))
+
+    def test_plan_rubric_requirement_cannot_be_disabled_in_final_draft(self):
+        with tempfile.TemporaryDirectory() as temp:
+            plan_path, draft_path = Path(temp)/'plan.md', Path(temp)/'draft.md'
+            plan = plan_v2()
+            plan['reader_rubric_required'] = True
+            plan_path.write_text(checkpoint(plan), encoding='utf-8')
+            review = review_v2()
+            review['document_status'] = 'final_candidate'
+            body = '[전체 배포 작업 제거]\n내용 갱신과 프로그램 배포를 분리했습니다.'
+            for marker in (None, False):
+                if marker is not None:
+                    review['reader_rubric_required'] = marker
+                draft_path.write_text('```text question=1\n'+body+'\n```\n'+checkpoint(review), encoding='utf-8')
+                result = essay_check.check_pair(plan_path, draft_path)
+                self.assertFalse(result['valid'])
+                self.assertTrue(any('memorable_line' in e for e in result['errors']))
+            review['questions'][0]['reader_review']['memorable_line'] = body.splitlines()[1]
+            draft_path.write_text('```text question=1\n'+body+'\n```\n'+checkpoint(review), encoding='utf-8')
+            self.assertTrue(essay_check.check_pair(plan_path, draft_path)['valid'])
+
+    def test_rubric_marker_must_be_boolean(self):
+        for value in ('false', 1, None, []):
+            plan = plan_v2()
+            plan['reader_rubric_required'] = value
+            self.assertTrue(any('reader_rubric_required' in e for e in validate(plan)))
+
+    def test_recommended_issue_allows_draft_but_blocks_final(self):
+        review = review_v2()
+        review['questions'][0]['recommended_issues'] = ['R1: 판단 근거의 설명 보완']
+        self.assertEqual(validate(review), [])
+        review['document_status'] = 'final_candidate'
+        self.assertTrue(any('권장 이슈' in e for e in validate(review)))
+        review['questions'][0]['recommended_issues'] = []
+        self.assertEqual(validate(review), [])
+
+    def test_style_rules_malformed_questions_returns_error_without_traceback(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            rules = root/'rules.json'
+            rules.write_text('{}', encoding='utf-8')
+            draft = root/'draft.md'
+            for questions in ([None], [{}], [{'id': []}]):
+                review = draft_review()
+                review['questions'] = questions
+                draft.write_text(checkpoint(review), encoding='utf-8')
+                result = subprocess.run([sys.executable,
+                    str(Path(essay_check.__file__).with_name('validate_essay_style.py')),
+                    '--strict', '--rules', str(rules), str(draft)],
+                    capture_output=True, encoding='utf-8')
+                self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn('Traceback', result.stderr)
+
     def test_cli_rejects_missing_reader_record(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp)/'draft.md'
             review = review_v2()
             del review['questions'][0]['reader_review']
             path.write_text(checkpoint(review), encoding='utf-8')
-            result = subprocess.run([sys.executable,str(Path(essay_hook.__file__).with_name('validate_essay_checkpoint.py')),
+            result = subprocess.run([sys.executable,str(Path(essay_check.__file__).with_name('validate_essay_checkpoint.py')),
                                      '--json',str(path)],capture_output=True,encoding="utf-8")
             self.assertEqual(result.returncode, 2)
             self.assertFalse(json.loads(result.stdout)['valid'])

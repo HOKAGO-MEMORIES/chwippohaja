@@ -13,7 +13,7 @@ from typing import Any
 SCRIPT_DIRECTORY = Path(__file__).resolve().parent
 if str(SCRIPT_DIRECTORY) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIRECTORY))
-from application_state import current
+from application_state import current, sync_verified
 
 
 URL_PATTERN = re.compile(r"https?://[^\s)>]+", re.IGNORECASE)
@@ -46,7 +46,7 @@ SOURCE_SUFFIXES = {
 def read_text(path: Path, errors: list[str]) -> str:
     try:
         text = path.read_text(encoding="utf-8")
-    except OSError as exc:
+    except (OSError, UnicodeError) as exc:
         errors.append(f"파일을 읽을 수 없습니다: {path.name}: {exc}")
         return ""
     if not text.strip():
@@ -146,7 +146,7 @@ def validate_research_stage(application: Path) -> dict[str, Any]:
     else:
         try:
             identity = json.loads(marker.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             errors.append(f"지원 건 표식을 읽을 수 없습니다: {exc}")
         if not isinstance(identity, dict):
             errors.append("지원 건 표식은 JSON 객체여야 합니다.")
@@ -241,14 +241,64 @@ def configure_utf8_stdio() -> None:
             reconfigure(encoding="utf-8")
 
 
+def validate_targets(applications: list[Path], required_services: list[str] | None = None) -> dict[str, Any]:
+    """Tally several applications in one call so a multi-target report cannot drop any."""
+    if not applications:
+        raise ValueError("검사할 지원 건이 하나 이상 필요합니다.")
+    resolved = [application.expanduser().resolve() for application in applications]
+    if len(resolved) != len(set(resolved)):
+        raise ValueError("같은 지원 건이 두 번 이상 지정됐습니다. 대상별로 한 번씩만 넘겨야 집계가 맞습니다.")
+    results: list[dict[str, Any]] = []
+    for application in resolved:
+        try:
+            validation = validate_research_stage(application)
+        except (OSError, ValueError) as exc:
+            validation = {"status": "partial", "errors": [str(exc)],
+                          "warnings": [], "artifacts": {}}
+        pending_services = []
+        for service in required_services or []:
+            try:
+                verified = sync_verified(application, service)
+            except (OSError, ValueError):
+                verified = False
+            if not verified:
+                pending_services.append(service)
+        local_complete = validation["status"] == "complete"
+        results.append({
+            "application": str(application),
+            "outcome": "complete" if local_complete and not pending_services else "incomplete",
+            "local_complete": local_complete,
+            "pending_services": pending_services,
+            "validation": validation,
+        })
+    complete = sum(1 for item in results if item["outcome"] == "complete")
+    return {
+        "complete": complete == len(results),
+        "counts": {"total": len(results), "complete": complete, "incomplete": len(results) - complete},
+        "targets": results,
+    }
+
+
 def main() -> int:
     configure_utf8_stdio()
     parser = argparse.ArgumentParser()
-    parser.add_argument("--application", required=True, type=Path)
+    parser.add_argument("--application", required=True, type=Path, action="append",
+                        help="지원 건 폴더. 여러 번 지정하면 전체 집계를 함께 반환")
+    parser.add_argument("--require-service", action="append", default=[],
+                        choices=("google_drive", "notion"),
+                        help="요청에 외부 반영이 포함된 경우 해당 서비스의 sync 기록까지 확인")
     args = parser.parse_args()
-    result = validate_research_stage(args.application)
+    if len(args.application) == 1 and not args.require_service:
+        result = validate_research_stage(args.application[0])
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0 if result["status"] == "complete" else 1
+    try:
+        result = validate_targets(args.application, args.require_service)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
     print(json.dumps(result, ensure_ascii=False, indent=2))
-    return 0 if result["status"] == "complete" else 1
+    return 0 if result["complete"] else 1
 
 
 if __name__ == "__main__":

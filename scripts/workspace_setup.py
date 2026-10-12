@@ -46,11 +46,14 @@ ASSET_FILES = (
 
 OPTIONAL_RULE_FILES = (
     Path("AGENTS.md"),
+    Path("CLAUDE.md"),
     Path("README_취업자료_운영규칙.md"),
 )
 
+# CLAUDE.md is common in unrelated projects, so it is preserved but never
+# treated as a sign that a folder is an existing job workspace.
 RECOGNIZED_ENTRIES = (
-    *OPTIONAL_RULE_FILES,
+    *(entry for entry in OPTIONAL_RULE_FILES if entry.name != "CLAUDE.md"),
     Path("공통자료"),
     Path("증빙서류"),
 )
