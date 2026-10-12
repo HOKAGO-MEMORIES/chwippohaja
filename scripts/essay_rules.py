@@ -21,8 +21,14 @@ def validate_rules(rules: Any, identifiers: list[str]) -> dict[str, Any]:
     if not isinstance(rules, dict) or set(rules) - set(identifiers):
         raise ValueError("형식 규칙은 등록된 문항 ID만 사용하는 객체여야 합니다.")
     for identifier, rule in rules.items():
-        if not isinstance(rule, dict) or set(rule) - (set(DEFAULT) | {"source"}):
+        if not isinstance(rule, dict) or set(rule) - (set(DEFAULT) | {"source", "min", "max"}):
             raise ValueError(f"{identifier}: 알 수 없는 형식 규칙입니다.")
+        for key in ("min", "max"):
+            value = rule.get(key)
+            if value is not None and (isinstance(value, bool) or not isinstance(value, int) or value < 0):
+                raise ValueError(f"{identifier}: {key}는 0 이상의 정수여야 합니다.")
+        if rule.get("min") is not None and rule.get("max") is not None and rule["min"] > rule["max"]:
+            raise ValueError(f"{identifier}: min이 max보다 클 수 없습니다.")
         for key, options in CHOICES.items():
             if key in rule and (not isinstance(rule[key], str) or rule[key] not in options):
                 raise ValueError(f"{identifier}: {key} 규칙이 올바르지 않습니다.")

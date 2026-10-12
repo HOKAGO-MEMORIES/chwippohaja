@@ -12,15 +12,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 import application_state as aps
 import application_workspace as aw
-import essay_hook as eh
-import research_hook as rh
+import essay_check as ec
 import workspace_setup as ws
 from count_essay_characters import measure
 from essay_rules import check_answers, validate_rules
 from validate_essay_checkpoint import load_checkpoint, validate
 from validate_essay_style import analyze
-from validate_research_stage import validate_research_stage
-from test_essay_hook import checkpoint, pre_draft, draft_review
+from validate_research_stage import validate_research_stage, validate_targets
+from essay_fixtures import checkpoint, pre_draft, draft_review
 import test_validate_research_stage as research_fixture
 
 
@@ -40,28 +39,30 @@ class WorkflowRegressions(unittest.TestCase):
     def write_draft(self, body=None, review=None, path=None):
         (path or self.draft).write_text('```text question=1\n' + (body or self.body) + '\n```\n' + checkpoint(review or draft_review()), encoding='utf-8')
 
-    def run_essay(self, command, *extra):
-        args = eh.parse_args([command, '--workspace', str(self.root), *map(str, extra)])
+    def run_check(self, *args):
         with contextlib.redirect_stdout(io.StringIO()) as output:
-            code = args.handler(args)
+            code = ec.main([str(item) for item in args])
         return code, json.loads(output.getvalue())
 
-    def start(self, *extra):
-        self.run_essay('start', '--plan', self.plan, '--draft', self.draft, '--limit', '1:0:1500', *extra)
-        return self.run_essay('plan-check')
+    def check(self, *extra, plan=None, draft=None):
+        return self.run_check('--plan', plan or self.plan, '--draft', draft or self.draft,
+                              '--limit', '1:0:1500', *extra)
+
+    def plan_check(self, *extra, plan=None):
+        return self.run_check('--plan', plan or self.plan, '--limit', '1:0:1500', *extra)
 
     def test_registered_missing_question_blocks_plan_and_draft(self):
-        code, result = self.start('--limit', '2:0:1500')
+        code, result = self.plan_check('--limit', '2:0:1500')
         self.assertEqual(code, 2)
         self.assertFalse(result['valid'])
-        self.assertFalse(eh.validate_run(self.root, eh.load_state(self.root))['valid'])
+        self.assertEqual(self.check('--limit', '2:0:1500')[0], 2)
 
     def test_malformed_checkpoint_blocks_with_validation_result(self):
-        self.start()
+        self.assertEqual(self.check()[0], 0)
         broken = pre_draft()
         broken['questions'] = None
         self.plan.write_text(checkpoint(broken), encoding='utf-8')
-        code, result = self.run_essay('check')
+        code, result = self.check()
         self.assertEqual(code, 2)
         self.assertFalse(result['valid'])
 
@@ -69,10 +70,9 @@ class WorkflowRegressions(unittest.TestCase):
         rules = self.root/'rules.json'
         rules.write_text(json.dumps({'1': {'summary':'forbidden','body':'list','source':'기업의 공식 문항 안내'}}), encoding='utf-8')
         self.write_draft('- 요구사항을 확인했습니다.\n- 동료와 결과를 검증했습니다.')
-        self.start('--rules', rules)
-        self.assertEqual(self.run_essay('check')[0], 0)
+        self.assertEqual(self.check('--rules', rules)[0], 0)
         self.write_draft('[요약]\n- 요구사항을 확인했습니다.')
-        self.assertEqual(self.run_essay('check')[0], 2)
+        self.assertEqual(self.check('--rules', rules)[0], 2)
 
     def test_rule_change_without_source_is_rejected(self):
         with self.assertRaises(ValueError):
@@ -117,51 +117,56 @@ class WorkflowRegressions(unittest.TestCase):
         self.assertEqual(measure(text, line_endings='crlf'), 6)
         self.assertEqual(measure(text, line_endings='remove'), 4)
 
-    def test_hook_enforces_byte_limit_instead_of_character_limit(self):
+    def test_check_enforces_byte_limit_instead_of_character_limit(self):
         rules = self.root/'rules.json'
         rules.write_text(json.dumps({'1': {'summary':'forbidden','unit':'utf8_bytes','source':'공식 안내: UTF-8 바이트'}}), encoding='utf-8')
         self.write_draft('가나다')
-        self.run_essay('start','--plan',self.plan,'--draft',self.draft,'--limit','1:0:8','--rules',rules)
-        self.run_essay('plan-check')
-        self.assertEqual(self.run_essay('check')[0], 2)
+        self.assertEqual(self.check('--limit','1:0:8','--rules',rules)[0], 2)
         self.write_draft('가나')
-        self.assertEqual(self.run_essay('check')[0], 0)
+        self.assertEqual(self.check('--limit','1:0:8','--rules',rules)[0], 0)
 
-    def test_start_cannot_replace_other_application_or_reset_same_run(self):
-        self.start()
-        self.run_essay('wait','--reason','추가 사용자 경험을 확인해야 합니다.','--question','어떤 결과였나요?')
-        before = eh.state_path(self.root).read_bytes()
-        self.run_essay('start','--plan',self.plan,'--draft',self.draft,'--limit','1:0:1500')
-        self.assertEqual(eh.state_path(self.root).read_bytes(), before)
+    def test_invalid_limits_in_rules_are_rejected_even_for_plan_only_check(self):
+        for bad in ({'max': True}, {'min': 10, 'max': 5}, {'min': '3'}):
+            with self.assertRaises(ValueError):
+                validate_rules({'1': bad}, ['1'])
+        rules = self.root/'rules.json'
+        rules.write_text(json.dumps({'1': {'min': 10, 'max': 5}}), encoding='utf-8')
+        self.assertEqual(self.run_check('--plan', self.plan, '--rules', rules)[0], 2)
+        rules.write_text(json.dumps({'1': {'min': None, 'max': 500}}), encoding='utf-8')
+        self.assertEqual(self.run_check('--plan', self.plan, '--draft', self.draft, '--rules', rules)[0], 0)
+
+    def test_duplicate_research_targets_are_rejected(self):
         with self.assertRaises(ValueError):
-            self.run_essay('start','--plan','시즌/회사B/02_작성중/설계.md','--draft','시즌/회사B/02_작성중/답변.md','--limit','1:0:1500')
-        self.assertEqual(eh.state_path(self.root).read_bytes(), before)
+            validate_targets([self.app, self.app / '.'])
 
-    def test_suspend_other_application_then_resume_preserves_plan_and_rebinds(self):
-        self.start()
-        state = eh.load_state(self.root)
-        state['session_id'] = 'old-session'
-        eh.write_json_atomic(eh.state_path(self.root), state)
-        _, suspended = self.run_essay('suspend')
-        self.run_essay('start','--plan','시즌/회사B/02_작성중/설계.md','--draft','시즌/회사B/02_작성중/답변.md','--limit','1:0:1500')
-        self.run_essay('suspend')
-        self.run_essay('resume','--run-id',suspended['run_id'],'--rebind')
-        restored=eh.load_state(self.root)
-        self.assertEqual(restored['validated_plan_digest'], state['validated_plan_digest'])
-        self.assertIsNone(restored['session_id'])
-        self.assertEqual(self.run_essay('check')[0], 0)
+    def test_claude_md_alone_does_not_make_a_folder_adoptable(self):
+        folder = Path(self.temporary.name) / '다른프로젝트'
+        folder.mkdir()
+        (folder / 'CLAUDE.md').write_text('# 다른 프로젝트 지침\n', encoding='utf-8')
+        self.assertEqual(ws.inspect_workspace(folder)['status'], 'nonempty')
 
-    def test_advance_preserves_old_run_and_requires_new_plan_validation(self):
-        self.start()
-        previous=eh.load_state(self.root)
-        next_draft=self.draft.with_name('03_답변.md')
-        self.write_draft(path=next_draft)
-        self.run_essay('advance','--plan',self.plan,'--draft',next_draft,'--limit','1:0:1500')
-        self.assertTrue((self.root/eh.STATE.parent/'essay-history'/f"{previous['run_id']}.json").is_file())
-        self.assertEqual(self.run_essay('check')[0],2)
-        self.run_essay('plan-check')
-        self.assertEqual(self.run_essay('finish')[0],0)
-        self.assertTrue(self.draft.is_file())
+    def test_rules_file_carries_question_limits(self):
+        rules = self.root/'rules.json'
+        rules.write_text(json.dumps({'1': {'max': 10}}), encoding='utf-8')
+        self.assertEqual(self.run_check('--plan', self.plan, '--draft', self.draft, '--rules', rules)[0], 2)
+        rules.write_text(json.dumps({'1': {'max': 500}}), encoding='utf-8')
+        self.assertEqual(self.run_check('--plan', self.plan, '--draft', self.draft, '--rules', rules)[0], 0)
+        with self.assertRaises(ValueError):
+            validate_rules({'1': {'max': -1}}, ['1'])
+
+    def test_parallel_applications_are_checked_independently(self):
+        other = Path(aw.apply_application(self.root, '다른기업', '백엔드')['application'])
+        other_plan = other / '02_작성중/01_설계.md'
+        other_draft = other / '02_작성중/02_답변.md'
+        other_plan.write_text(checkpoint(pre_draft()), encoding='utf-8')
+        broken = draft_review()
+        broken['document_status'] = 'needs_revision'
+        self.write_draft(path=other_draft, review=broken)
+        self.assertEqual(self.check()[0], 0)
+        self.assertEqual(self.check(plan=other_plan, draft=other_draft)[0], 2)
+        self.assertEqual(self.check()[0], 0)
+        runs = self.root / '.chwippohaja' / 'runs'
+        self.assertEqual(list(runs.glob('essay-*')) if runs.exists() else [], [])
 
     def test_current_research_ignores_preserved_old_incomplete_analysis(self):
         research_fixture.ValidateResearchStageTest().write_valid_documents(self.app)
@@ -195,21 +200,23 @@ class WorkflowRegressions(unittest.TestCase):
 
     def test_local_research_and_external_sync_recovery_are_independent(self):
         research_fixture.ValidateResearchStageTest().write_valid_documents(self.app)
-        target={'application':self.app.relative_to(self.root).as_posix(),'disposition':None}
-        state={'targets':[target],'required_services':['notion']}
-        result=rh.validate_targets(self.root,state)
+        result=validate_targets([self.app],['notion'])
         self.assertTrue(result['targets'][0]['local_complete'])
         self.assertFalse(result['complete'])
         aps.sync(self.app,'notion','pending','권한이 부족하여 반영하지 못함')
-        target['disposition']='partial'
-        self.assertEqual(rh.validate_targets(self.root,state)['counts']['partial'],1)
+        self.assertEqual(validate_targets([self.app],['notion'])['counts']['incomplete'],1)
         aps.sync(self.app,'notion','verified','페이지 재조회로 현재 링크와 속성 확인')
-        self.assertFalse(rh.validate_targets(self.root,state)['complete'])
-        target['disposition']=None
-        self.assertTrue(rh.validate_targets(self.root,state)['complete'])
+        self.assertTrue(validate_targets([self.app],['notion'])['complete'])
         path=self.app/'01_공고_JD/예시전자_기업리서치.md'
         path.write_text(path.read_text(encoding='utf-8')+'\n새 조사',encoding='utf-8')
-        self.assertFalse(rh.validate_targets(self.root,state)['complete'])
+        self.assertFalse(validate_targets([self.app],['notion'])['complete'])
+
+    def test_multiple_research_targets_are_all_counted(self):
+        research_fixture.ValidateResearchStageTest().write_valid_documents(self.app)
+        empty = Path(aw.apply_application(self.root, '다른기업', '백엔드')['application'])
+        result = validate_targets([self.app, empty])
+        self.assertEqual(result['counts'], {'total': 2, 'complete': 1, 'incomplete': 1})
+        self.assertFalse(result['complete'])
 
     def test_evidence_map_requires_all_subquestions_and_real_answer_excerpt(self):
         plan=pre_draft()
@@ -219,15 +226,14 @@ class WorkflowRegressions(unittest.TestCase):
         question['evidence_map']=[{'subquestion':question['subquestions'][0], 'source':'공통자료/사례.md#F1', 'claim':'구조 변경과 결과 검증'}]
         self.assertFalse(validate(plan))
         self.plan.write_text(checkpoint(plan),encoding='utf-8')
-        self.start()
-        self.assertEqual(self.run_essay('check')[0],2)
+        self.assertEqual(self.check()[0],2)
         review=draft_review()
         review['questions'][0]['answer_evidence']=[{'source':'공통자료/사례.md#F1','quote':'문제를 확인하고 구조를 바꾼 뒤 결과를 검증했습니다.'}]
         self.write_draft(review=review)
-        self.assertEqual(self.run_essay('check')[0],0)
+        self.assertEqual(self.check()[0],0)
         review['questions'][0]['answer_evidence'][0]['quote']='본문에 없는 말'
         self.write_draft(review=review)
-        self.assertEqual(self.run_essay('check')[0],2)
+        self.assertEqual(self.check()[0],2)
 
     def test_skill_templates_support_partial_then_complete_adopted_draft(self):
         self.body='[전체 배포 작업 제거]\n글만 바뀌어도 전체 프로그램을 배포해야 했습니다. 문제를 확인하고 구조를 바꾼 뒤 결과를 검증했습니다. 내용 갱신과 프로그램 배포를 분리해 글 수정에 전체 배포가 필요 없어졌습니다.'
@@ -268,11 +274,8 @@ class WorkflowRegressions(unittest.TestCase):
         from validate_essay_checkpoint import CHECKPOINT
         self.plan.write_text(CHECKPOINT.sub(lambda _:checkpoint(plan),plan_source),encoding='utf-8')
         self.draft.write_text(CHECKPOINT.sub(lambda _:checkpoint(review),draft_source)+'\n```text question=1\n'+self.body+'\n```\n',encoding='utf-8')
-        self.start('--limit','2:0:1500')
-        self.assertEqual(self.run_essay('check')[0],0)
-        self.run_essay('wait','--reason','문항 2의 실제 소통 경험이 필요합니다.','--question','다른 의견을 어떻게 조율했나요?')
+        self.assertEqual(self.check('--limit','2:0:1500')[0],0)
         original=self.draft.read_bytes()
-        self.run_essay('resume')
         plan['document_status']='ready_full'
         q2.update({'action':'write','material_fit':'direct','material_fit_reason':'사용자가 대화와 합의 행동을 확인함',
                    'evidence':['사용자가 확인한 조율 사례'], 'missing_information':[], 'follow_up_questions':[],
@@ -292,21 +295,20 @@ class WorkflowRegressions(unittest.TestCase):
         q2_review['answer_evidence']=[{'source':'공통자료/사례.md#F2','quote':'서로의 기준을 확인하고 합의안을 함께 검증했습니다.'}]
         review['questions'][1]=q2_review
         review['revision']['previous_version']=self.draft.name
-        self.run_essay('advance','--plan',next_plan,'--draft',next_draft,'--limit','1:0:1500','--limit','2:0:1500')
-        self.run_essay('plan-check')
+        self.assertEqual(self.plan_check('--limit','2:0:1500',plan=next_plan)[0],0)
         next_draft.write_text('```text question=1\n'+self.body+'\n```\n```text question=2\n[합의 기준의 확인]\n팀원마다 기준이 달랐습니다. 서로의 기준을 확인하고 합의안을 함께 검증했습니다. 같은 기준으로 결과를 확인할 수 있었습니다.\n```\n'+checkpoint(review),encoding='utf-8')
-        self.assertEqual(self.run_essay('finish')[0],0)
+        self.assertEqual(self.check('--limit','2:0:1500',plan=next_plan,draft=next_draft)[0],0)
         self.assertEqual(self.draft.read_bytes(),original)
         aps.select(self.app,'essay',str(next_draft),'사용자가 완성본 채택')
-        aps.stage(self.app,'writing','valid_draft','전체 문항 검토와 훅 검사 통과')
+        aps.stage(self.app,'writing','valid_draft','전체 문항 검토와 essay_check 통과')
         self.assertEqual(aps.status_view(self.app)['stages']['writing']['effective_status'],'valid_draft')
 
-    def test_style_cli_uses_same_employer_rules_as_hook(self):
+    def test_style_cli_uses_same_employer_rules_as_check(self):
         import subprocess
         rules=self.root/'rules.json'
         rules.write_text(json.dumps({'1':{'summary':'forbidden','body':'list','source':'공식 요구'}}),encoding='utf-8')
         self.write_draft('- 요구사항을 확인했습니다.')
-        completed=subprocess.run([sys.executable,str(Path(eh.__file__).with_name('validate_essay_style.py')),
+        completed=subprocess.run([sys.executable,str(Path(ec.__file__).with_name('validate_essay_style.py')),
                                   '--strict','--rules',str(rules),str(self.draft)],capture_output=True,encoding='utf-8')
         self.assertEqual(completed.returncode,0,completed.stderr)
         self.assertTrue(json.loads(completed.stdout)['structural_valid'])

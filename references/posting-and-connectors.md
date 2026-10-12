@@ -2,7 +2,13 @@
 
 신규 공고를 등록하거나 Drive와 Notion을 갱신할 때 읽는다.
 
-공고 조사 훅이 설치된 워크스페이스에서는 조사 대상을 확정한 뒤 [공고 조사 훅](research-hooks.md)의 실행 상태를 시작한다. 훅의 최소 형식 검사를 공식 원문 대조나 의미 검토의 대체물로 사용하지 않는다.
+여러 지원 건을 함께 조사하면 처음 받은 대상 목록 전체를 마지막에 한 번에 검사해 집계한다. 실패하거나 시도하지 못한 대상도 목록에서 빼지 않는다.
+
+```bash
+python scripts/validate_research_stage.py --application "시즌/회사A" --application "시즌/회사B"
+```
+
+Drive나 Notion 반영까지 요청받았으면 `--require-service notion`처럼 서비스를 추가한다. 이 검사는 최소 형식 확인이며 공식 원문 대조나 의미 검토를 대신하지 않는다.
 
 ## 공고 확보
 

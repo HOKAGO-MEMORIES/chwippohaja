@@ -21,6 +21,27 @@ SPEC.loader.exec_module(validator)
 
 
 class ValidateEssayStyleTest(unittest.TestCase):
+    def test_stock_phrases_and_repeated_endings_are_candidates_not_errors(self) -> None:
+        source = ("```text\n[요약]\n이 경험을 통해 소통의 중요성을 배웠습니다. 확인했습니다. "
+                  "분석했습니다. 수정했습니다. 시험했습니다. 신뢰받는 개발자가 되겠습니다.\n```\n")
+        result = validator.analyze(source)
+        self.assertTrue(result["structural_valid"])
+        values = [item["value"] for item in result["blocks"][0]["stock_phrases"]]
+        self.assertIn("이 경험을 통해 소통의 중요성을 배웠습니다", values)
+        self.assertIn("개발자가 되겠습니다", values)
+        self.assertEqual(result["totals"]["repeated_ending_runs"], 1)
+
+    def test_examples_shipped_with_skill_have_no_stock_candidates(self) -> None:
+        examples = Path(__file__).resolve().parents[1] / "assets" / "examples"
+        answers = [path for path in examples.glob("*.md") if "```text" in path.read_text(encoding="utf-8")]
+        self.assertGreaterEqual(len(answers), 5)
+        for path in answers:
+            result = validator.analyze(path.read_text(encoding="utf-8"))
+            self.assertTrue(result["structural_valid"], path.name)
+            self.assertEqual(result["totals"]["stock_phrases"], 0, path.name)
+            self.assertEqual(result["totals"]["repeated_ending_runs"], 0, path.name)
+            self.assertEqual(result["totals"]["middots"], 0, path.name)
+
     def test_finds_style_review_candidates_in_text_blocks(self) -> None:
         source = """```text
 [검증 가능한 운영 범위]

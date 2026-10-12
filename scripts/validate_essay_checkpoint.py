@@ -89,6 +89,8 @@ def validate_reader_review(question: dict[str, Any]) -> list[str]:
                                   f"{identifier}: reader_review.summary")
     if not nonempty_string(review.get("question_fit")):
         errors.append(f"{identifier}: reader_review.question_fit에 본문과 문항의 연결 근거가 필요합니다.")
+    if "memorable_line" in review and not isinstance(review["memorable_line"], str):
+        errors.append(f"{identifier}: reader_review.memorable_line은 본문에서 옮긴 문장이어야 합니다.")
     issues = review.get("issues")
     if not isinstance(issues, list):
         return errors + [f"{identifier}: reader_review.issues는 배열이어야 합니다."]
